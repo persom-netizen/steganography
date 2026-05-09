@@ -42,7 +42,13 @@ function updateGraphs(graphs = {}) {
     return;
   }
   container.innerHTML = entries
-    .map(([k, v]) => `<a class="graph-link" href="/results/${v.split('/').pop()}" target="_blank">${k}</a>`)
+    .map(([k, v]) => {
+      const file = String(v).split("/").pop();
+      if (!/^[A-Za-z0-9_.-]+$/.test(file) || file.includes("..")) {
+        return "";
+      }
+      return `<a class="graph-link" href="/results/${encodeURIComponent(file)}" target="_blank">${k}</a>`;
+    })
     .join("");
 }
 

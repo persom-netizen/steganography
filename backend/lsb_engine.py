@@ -11,10 +11,23 @@ class LSBError(Exception):
     pass
 
 
-def validate_image(path: str) -> tuple[int, int, str]:
-    if not os.path.exists(path):
+def _resolve_safe_path(path: str) -> str:
+    candidate = os.path.abspath(path)
+    allowed_roots = [os.path.abspath(Config.UPLOAD_FOLDER), os.path.abspath(Config.RESULTS_FOLDER)]
+    try:
+        is_allowed = any(os.path.commonpath([root, candidate]) == root for root in allowed_roots)
+    except ValueError:
+        is_allowed = False
+    if not is_allowed:
+        raise LSBError("Invalid image path")
+    return candidate
+
+
+def validate_image(path: str) -> Tuple[int, int, str]:
+    safe_path = _resolve_safe_path(path)
+    if not os.path.exists(safe_path):
         raise LSBError("Image file does not exist")
-    with Image.open(path) as img:
+    with Image.open(safe_path) as img:
         fmt = (img.format or "").upper()
         if fmt not in Config.ALLOWED_FORMATS:
             raise LSBError("Invalid image format. Only PNG and BMP are allowed")
@@ -68,6 +81,9 @@ def decode_message_from_image(stego_path: str) -> str:
 
     header_bits = "".join(str(arr[i] & 1) for i in range(32))
     payload_len = int(header_bits, 2)
+    max_payload_len = (len(arr) - 32) // 8
+    if payload_len < 0 or payload_len > max_payload_len:
+        raise LSBError("Invalid payload length in stego image")
     payload_bits_len = payload_len * 8
 
     if 32 + payload_bits_len > len(arr):

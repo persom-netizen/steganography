@@ -15,7 +15,7 @@ Xect implements a controlled experimental framework to evaluate:
 ### Controlled Experimental Design
 - **4 Payload Levels**: 1KB, 25KB, 50KB, 100KB
 - **10 Cover Images**: Resolution variety (256×256, 512×512, 1024×1024)
-- **Total Simulations**: 50 (5 levels × 10 images)
+- **Total Simulations**: 40 (4 levels × 10 images)
 
 ### Core Components
 

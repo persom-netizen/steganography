@@ -4,5 +4,7 @@ results/*.png
 results/*.json
 uploads/*.png
 uploads/*.bmp
+uploads/*.upload
+uploads/*.tmp
 !results/.gitkeep
 !uploads/.gitkeep

@@ -1,15 +1,29 @@
 import io
+import os
 import unittest
 
 from PIL import Image
 
 from app import create_app
+from config import Config
 
 
 class XectApiTestCase(unittest.TestCase):
     def setUp(self):
+        self._original_db = None
+        if os.path.exists(Config.DATABASE_FILE):
+            with open(Config.DATABASE_FILE, "rb") as fp:
+                self._original_db = fp.read()
+            os.remove(Config.DATABASE_FILE)
         self.app = create_app()
         self.client = self.app.test_client()
+
+    def tearDown(self):
+        if self._original_db is not None:
+            with open(Config.DATABASE_FILE, "wb") as fp:
+                fp.write(self._original_db)
+        elif os.path.exists(Config.DATABASE_FILE):
+            os.remove(Config.DATABASE_FILE)
 
     def _sample_png(self):
         image = Image.new("RGB", (128, 128), color=(120, 80, 200))
@@ -23,7 +37,7 @@ class XectApiTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertIn("simulations", payload)
-        self.assertGreaterEqual(len(payload["simulations"]), 1)
+        self.assertEqual(len(payload["simulations"]), Config.DEFAULT_SIMULATION_COUNT)
 
     def test_encode_decode_flow(self):
         upload = self.client.post(

@@ -2,7 +2,11 @@ import os
 
 
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "xect-dev-key")
+    _env = os.environ.get("FLASK_ENV", "").lower()
+    _secret = os.environ.get("SECRET_KEY")
+    if _env == "production" and not _secret:
+        raise RuntimeError("SECRET_KEY must be set when FLASK_ENV=production")
+    SECRET_KEY = _secret or "xect-dev-key"
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
     RESULTS_FOLDER = os.path.join(BASE_DIR, "results")

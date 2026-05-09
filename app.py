@@ -1,9 +1,8 @@
 import os
 import time
 import uuid
-from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 
 from backend.analytics import aggregate_statistics
 from backend.database import export_results, get_completed_simulations, get_simulation, init_storage, list_simulations, update_simulation
@@ -49,22 +48,29 @@ def create_app() -> Flask:
         if sim.get("locked"):
             return jsonify({"error": "Simulation is locked"}), 409
 
-        extension = Path(uploaded.filename or "").suffix.lower()
-        filename = f"sim_{simulation_id}_{uuid.uuid4().hex}{extension}"
+        filename = f"upload_{uuid.uuid4().hex}.tmp"
         save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         uploaded.save(save_path)
 
         try:
             width, height, fmt = validate_image(save_path)
-        except LSBError as exc:
+        except LSBError:
             if os.path.exists(save_path):
                 os.remove(save_path)
-            return jsonify({"error": str(exc)}), 400
+            return jsonify({"error": "Invalid image. Only PNG/BMP with supported dimensions are accepted"}), 400
+        except Exception:
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            return jsonify({"error": "Unable to process uploaded image"}), 400
+
+        final_filename = f"sim_{simulation_id}_{uuid.uuid4().hex}.{fmt.lower()}"
+        final_path = os.path.join(app.config["UPLOAD_FOLDER"], final_filename)
+        os.replace(save_path, final_path)
 
         sim = update_simulation(
             simulation_id,
             {
-                "image_path": save_path,
+                "image_path": final_path,
                 "status": "image_uploaded",
                 "format": fmt,
                 "dimensions": [width, height],
@@ -101,8 +107,8 @@ def create_app() -> Flask:
         started = time.perf_counter()
         try:
             embedded_bytes, max_capacity_bytes = encode_message_in_image(sim["image_path"], message, stego_path)
-        except LSBError as exc:
-            return jsonify({"error": str(exc)}), 400
+        except LSBError:
+            return jsonify({"error": "Encoding failed for the provided payload/image"}), 400
         elapsed_ms = (time.perf_counter() - started) * 1000
 
         metrics = compute_metrics(sim["image_path"], stego_path)
@@ -138,8 +144,8 @@ def create_app() -> Flask:
         started = time.perf_counter()
         try:
             extracted = decode_message_from_image(sim["stego_image_path"])
-        except LSBError as exc:
-            return jsonify({"error": str(exc)}), 400
+        except LSBError:
+            return jsonify({"error": "Decoding failed for the selected stego image"}), 400
         elapsed_ms = (time.perf_counter() - started) * 1000
 
         accuracy = extraction_accuracy(sim.get("secret_message", ""), extracted)
@@ -270,10 +276,14 @@ def create_app() -> Flask:
 
     @app.get("/results/<path:filename>")
     def serve_results_file(filename: str):
-        path = os.path.join(app.config["RESULTS_FOLDER"], filename)
+        directory = app.config["RESULTS_FOLDER"]
+        root = os.path.abspath(directory)
+        path = os.path.abspath(os.path.join(root, filename))
+        if os.path.commonpath([root, path]) != root:
+            return jsonify({"error": "Invalid file path"}), 400
         if not os.path.exists(path):
             return jsonify({"error": "File not found"}), 404
-        return send_file(path)
+        return send_from_directory(directory, filename)
 
     return app
 
@@ -281,4 +291,9 @@ def create_app() -> Flask:
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    is_production = os.environ.get("FLASK_ENV", "").lower() == "production"
+    app.run(
+        debug=os.environ.get("FLASK_DEBUG") == "1" and not is_production,
+        host=os.environ.get("FLASK_HOST", "127.0.0.1"),
+        port=int(os.environ.get("FLASK_PORT", "5000")),
+    )
