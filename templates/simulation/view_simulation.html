@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}Simulation Results - Xect{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <a href="/session/{{ simulation.session_id }}" class="btn btn-secondary mb-3">← Back to Session</a>
+        
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h1 class="card-title">Simulation #{{ simulation.id }}</h1>
+                        <p class="card-text text-muted">Image: {{ simulation.cover_image.filename }} | Payload Level: {{ simulation.payload_level }}/5</p>
+                    </div>
+                    <span class="badge bg-{{ 'success' if simulation.status == 'completed' else 'danger' if simulation.status == 'failed' else 'info' if simulation.status == 'running' else 'secondary' }}">
+                        {{ simulation.status.capitalize() }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if simulation.status == 'completed' %}
+
+<!-- Metrics Section -->
+<div class="row mb-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Image Quality Metrics</h5>
+            </div>
+            <div class="card-body">
+                <div class="metric-box">
+                    <strong>MSE (Mean Squared Error)</strong>
+                    <p class="h5">{{ "%.4f"|format(simulation.mse) }}</p>
+                    <small class="text-muted">Lower values indicate better image quality</small>
+                </div>
+                
+                <div class="metric-box">
+                    <strong>PSNR (Peak Signal-to-Noise Ratio)</strong>
+                    <p class="h5">{{ "%.2f"|format(simulation.psnr) }} dB</p>
+                    <small class="text-muted">Higher values indicate better quality (typically >30 dB is good)</small>
+                </div>
+                
+                <div class="metric-box">
+                    <strong>SSIM (Structural Similarity Index)</strong>
+                    <p class="h5">{{ "%.4f"|format(simulation.ssim) }}</p>
+                    <small class="text-muted">Range: 0-1, closer to 1 indicates higher similarity</small>
+                </div>
+                
+                <div class="metric-box">
+                    <strong>Q-Index (Universal Image Quality)</strong>
+                    <p class="h5">{{ "%.4f"|format(simulation.q_index) }}</p>
+                    <small class="text-muted">Measures structural distortion, luminance, and contrast</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Extraction & Performance</h5>
+            </div>
+            <div class="card-body">
+                <div class="metric-box">
+                    <strong>Extraction Accuracy</strong>
+                    <p class="h5">{{ "%.2f"|format(simulation.extraction_accuracy) }}%</p>
+                    <small class="text-muted">Percentage of correctly recovered hidden data</small>
+                </div>
+                
+                <div class="metric-box">
+                    <strong>Payload Size</strong>
+                    <p class="h5">{{ "%.2f"|format(simulation.payload_size_kb) }} KB</p>
+                    <small class="text-muted">Total hidden data embedded in image</small>
+                </div>
+                
+                <div class="metric-box">
+                    <strong>Embedding Time</strong>
+                    <p class="h5">{{ "%.2f"|format(simulation.embedding_time_ms) }} ms</p>
+                    <small class="text-muted">Time to embed payload into image</small>
+                </div>
+                
+                <div class="metric-box">
+                    <strong>Extraction Time</strong>
+                    <p class="h5">{{ "%.2f"|format(simulation.extraction_time_ms) }} ms</p>
+                    <small class="text-muted">Time to extract hidden message</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Visualizations -->
+{% if graphs %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Visualizations</h5>
+            </div>
+            <div class="card-body">
+                {% for graph in graphs %}
+                <div class="mb-4">
+                    <h6>{{ graph.graph_type.replace('_', ' ').title() }}</h6>
+                    <img src="{{ graph.graph_filepath }}" alt="{{ graph.graph_type }}" class="img-fluid rounded">
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Test Results -->
+{% if tests %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Test Results (Black-Box & White-Box)</h5>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="blackbox-tab" data-bs-toggle="tab" 
+                                data-bs-target="#blackbox" type="button" role="tab">
+                            Black-Box Tests
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="whitebox-tab" data-bs-toggle="tab" 
+                                data-bs-target="#whitebox" type="button" role="tab">
+                            White-Box Tests
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="blackbox" role="tabpanel">
+                        {% set blackbox_tests = tests|selectattr('test_type', 'equalto', 'black_box')|list %}
+                        {% if blackbox_tests %}
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Test Name</th>
+                                        <th>Category</th>
+                                        <th>Status</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for test in blackbox_tests %}
+                                    <tr>
+                                        <td>{{ test.test_name }}</td>
+                                        <td><span class="badge bg-secondary">{{ test.test_category }}</span></td>
+                                        <td>
+                                            <span class="badge bg-{{ 'success' if test.test_status == 'pass' else 'warning' if test.test_status == 'warning' else 'danger' }}">
+                                                {{ test.test_status.upper() }}
+                                            </span>
+                                        </td>
+                                        <td><small>{{ test.test_result }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="tab-pane fade" id="whitebox" role="tabpanel">
+                        {% set whitebox_tests = tests|selectattr('test_type', 'equalto', 'white_box')|list %}
+                        {% if whitebox_tests %}
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Test Name</th>
+                                        <th>Category</th>
+                                        <th>Status</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for test in whitebox_tests %}
+                                    <tr>
+                                        <td>{{ test.test_name }}</td>
+                                        <td><span class="badge bg-secondary">{{ test.test_category }}</span></td>
+                                        <td>
+                                            <span class="badge bg-{{ 'success' if test.test_status == 'pass' else 'warning' if test.test_status == 'warning' else 'danger' }}">
+                                                {{ test.test_status.upper() }}
+                                            </span>
+                                        </td>
+                                        <td><small>{{ test.test_result }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Message Preview -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Message Recovery</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Original Message (First 200 chars)</h6>
+                        <div class="alert alert-light">
+                            <code>{{ simulation.secret_message|truncate(200) }}</code>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Extracted Message (First 200 chars)</h6>
+                        <div class="alert alert-light">
+                            <code>{{ simulation.extracted_message|truncate(200) }}</code>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-{{ 'success' if simulation.extraction_accuracy == 100 else 'warning' }}">
+                    {% if simulation.extraction_accuracy == 100 %}
+                        ✓ Perfect extraction - Message recovered completely
+                    {% else %}
+                        ⚠ Partial extraction - {{ "%.2f"|format(simulation.extraction_accuracy) }}% accuracy
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+
+<div class="card">
+    <div class="card-body text-center py-5">
+        {% if simulation.status == 'pending' %}
+            <h5>Simulation Pending</h5>
+            <p class="text-muted">This simulation has not been run yet</p>
+            <a href="/session/{{ simulation.session_id }}" class="btn btn-primary">Return to Session</a>
+        {% elif simulation.status == 'running' %}
+            <h5>Simulation Running</h5>
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        {% elif simulation.status == 'failed' %}
+            <h5>Simulation Failed</h5>
+            <p class="text-danger">{{ simulation.error_message }}</p>
+            <a href="/session/{{ simulation.session_id }}" class="btn btn-primary">Return to Session</a>
+        {% endif %}
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
