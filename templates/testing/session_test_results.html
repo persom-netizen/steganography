@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Test Results - Xect{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <a href="/session/{{ session.id }}" class="btn btn-secondary mb-3">← Back to Session</a>
+        
+        <div class="card">
+            <div class="card-body">
+                <h1 class="card-title">Test Results: {{ session.session_name }}</h1>
+                <p class="card-text text-muted">Comprehensive testing across all simulations</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if test_results %}
+
+<!-- Test Summary -->
+<div class="row mb-4">
+    {% set pass_count = test_results|selectattr('test_status', 'equalto', 'pass')|list|length %}
+    {% set warning_count = test_results|selectattr('test_status', 'equalto', 'warning')|list|length %}
+    {% set fail_count = test_results|selectattr('test_status', 'equalto', 'fail')|list|length %}
+    
+    <div class="col-lg-3">
+        <div class="card border-success">
+            <div class="card-body text-center">
+                <h6 class="text-success">Passed</h6>
+                <p class="h4 text-success">{{ pass_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card border-warning">
+            <div class="card-body text-center">
+                <h6 class="text-warning">Warnings</h6>
+                <p class="h4 text-warning">{{ warning_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card border-danger">
+            <div class="card-body text-center">
+                <h6 class="text-danger">Failed</h6>
+                <p class="h4 text-danger">{{ fail_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Total Tests</h6>
+                <p class="h4">{{ test_results|length }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test Categories -->
+<div class="row mb-4">
+    <div class="col-12">
+        <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="blackbox-tab" data-bs-toggle="tab" 
+                        data-bs-target="#blackbox" type="button" role="tab">
+                    Black-Box Tests
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="whitebox-tab" data-bs-toggle="tab" 
+                        data-bs-target="#whitebox" type="button" role="tab">
+                    White-Box Tests
+                </button>
+            </li>
+        </ul>
+        
+        <div class="tab-content">
+            <!-- Black-Box Tests -->
+            <div class="tab-pane fade show active" id="blackbox" role="tabpanel">
+                {% set blackbox_tests = test_results|selectattr('test_type', 'equalto', 'black_box')|list %}
+                {% if blackbox_tests %}
+                    {% for category in ['file_validation', 'capacity_check'] %}
+                        {% set cat_tests = blackbox_tests|selectattr('test_category', 'equalto', category)|list %}
+                        {% if cat_tests %}
+                        <div class="mb-4">
+                            <h6 class="bg-light p-3 rounded">{{ category.replace('_', ' ').title() }}</h6>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Test Name</th>
+                                        <th>Status</th>
+                                        <th>Details</th>
+                                        <th>Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for test in cat_tests|unique(attribute='test_name')|list %}
+                                    {% set test_instances = cat_tests|selectattr('test_name', 'equalto', test.test_name)|list %}
+                                    <tr>
+                                        <td>{{ test.test_name }}</td>
+                                        <td>
+                                            <span class="badge bg-{{ 'success' if test.test_status == 'pass' else 'warning' if test.test_status == 'warning' else 'danger' }}">
+                                                {{ test.test_status.upper() }}
+                                            </span>
+                                        </td>
+                                        <td><small>{{ test.test_result }}</small></td>
+                                        <td><small>{{ test_instances|length }} simulations</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </div>
+            
+            <!-- White-Box Tests -->
+            <div class="tab-pane fade" id="whitebox" role="tabpanel">
+                {% set whitebox_tests = test_results|selectattr('test_type', 'equalto', 'white_box')|list %}
+                {% if whitebox_tests %}
+                    {% for category in ['extraction_accuracy', 'timing_analysis', 'efficiency', 'recovery'] %}
+                        {% set cat_tests = whitebox_tests|selectattr('test_category', 'equalto', category)|list %}
+                        {% if cat_tests %}
+                        <div class="mb-4">
+                            <h6 class="bg-light p-3 rounded">{{ category.replace('_', ' ').title() }}</h6>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Test Name</th>
+                                        <th>Status</th>
+                                        <th>Details</th>
+                                        <th>Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for test in cat_tests|unique(attribute='test_name')|list %}
+                                    {% set test_instances = cat_tests|selectattr('test_name', 'equalto', test.test_name)|list %}
+                                    <tr>
+                                        <td>{{ test.test_name }}</td>
+                                        <td>
+                                            <span class="badge bg-{{ 'success' if test.test_status == 'pass' else 'warning' if test.test_status == 'warning' else 'danger' }}">
+                                                {{ test.test_status.upper() }}
+                                            </span>
+                                        </td>
+                                        <td><small>{{ test.test_result }}</small></td>
+                                        <td><small>{{ test_instances|length }} simulations</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+
+<div class="card">
+    <div class="card-body text-center py-5">
+        <h5>No Test Results</h5>
+        <p class="text-muted">Run simulations to see test results</p>
+        <a href="/session/{{ session.id }}" class="btn btn-primary">Go to Session</a>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
