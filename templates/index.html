@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Xect Dashboard{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header mt-3 rounded">
+  <div class="container py-2">
+    <h1>Xect Simulation Dashboard</h1>
+    <p class="mb-0">Sequential LSB simulation and quantitative analysis platform</p>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">Simulation Cards</div>
+      <div class="card-body">
+        <div id="simulation-cards" class="row g-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">Simulation Panel</div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label class="form-label">Simulation ID</label>
+          <input id="simulation-id" type="number" class="form-control" min="1" value="1">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Upload Cover Image (PNG/BMP)</label>
+          <input id="cover-image" type="file" class="form-control" accept=".png,.bmp,image/png,image/bmp">
+          <button id="upload-btn" class="btn btn-secondary btn-sm mt-2">Upload Image</button>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Payload Size</label>
+          <select id="payload-size" class="form-select">
+            {% for option in payload_options %}
+            <option value="{{ option }}">{{ option }} KB</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Secret Message</label>
+          <textarea id="secret-message" class="form-control" rows="3" placeholder="Enter secret message"></textarea>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button id="encode-btn" class="btn btn-primary">Encode</button>
+          <button id="decode-btn" class="btn btn-success">Decode</button>
+          <button id="graph-btn" class="btn btn-warning">Generate Graphs</button>
+          <button id="blackbox-btn" class="btn btn-outline-dark">Black Box Testing</button>
+          <button id="whitebox-btn" class="btn btn-outline-dark">White Box Testing</button>
+          <button id="lock-btn" class="btn btn-dark">Lock</button>
+          <button id="export-btn" class="btn btn-outline-primary">Export</button>
+        </div>
+        <div id="status-box" class="alert alert-info mt-3 mb-0">Ready.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Metrics</div>
+      <div class="card-body table-responsive">
+        <table class="table table-sm">
+          <tbody id="metrics-body">
+          <tr><th>MSE</th><td>-</td></tr>
+          <tr><th>PSNR</th><td>-</td></tr>
+          <tr><th>SSIM</th><td>-</td></tr>
+          <tr><th>Q Index</th><td>-</td></tr>
+          <tr><th>Embedding Time (ms)</th><td>-</td></tr>
+          <tr><th>Extraction Accuracy (%)</th><td>-</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Graphs / Evidence</div>
+      <div class="card-body">
+        <div id="graph-links" class="small"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+{% endblock %}
