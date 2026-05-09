@@ -13,9 +13,9 @@ Xect implements a controlled experimental framework to evaluate:
 ## System Architecture
 
 ### Controlled Experimental Design
-- **5 Payload Levels**: 1KB, 25KB, 50KB, 100KB, 150KB
+- **4 Payload Levels**: 1KB, 25KB, 50KB, 100KB
 - **10 Cover Images**: Resolution variety (256×256, 512×512, 1024×1024)
-- **Total Simulations**: 50 (5 levels × 10 images)
+- **Total Simulations**: 40 (4 levels × 10 images)
 
 ### Core Components
 
@@ -62,8 +62,7 @@ AnalysisSession (groups 50 simulations)
 ## Installation
 
 ### Prerequisites
-- Python 3.8+
-- MySQL 5.7+
+- Python 3.10+
 - 50MB+ disk space for test images and outputs
 
 ### Setup
@@ -85,22 +84,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. **Configure environment**
-```bash
-cp .env.example .env
-# Edit .env with MySQL credentials
-```
-
-5. **Initialize database**
-```bash
-python
->>> from app import create_app, db
->>> app = create_app()
->>> with app.app_context(): db.create_all()
->>> exit()
-```
-
-6. **Run application**
+4. **Run application**
 ```bash
 python run.py
 ```
@@ -110,15 +94,14 @@ Visit `http://localhost:5000`
 ## Usage
 
 ### Create Analysis Session
-1. Navigate to "New Session"
-2. Upload 10 cover images (PNG/BMP, 256×256 to 1024×1024)
-3. System automatically creates 50 simulations
+1. Open the dashboard
+2. Upload a cover image to a simulation slot
+3. Configure payload and secret message
 
 ### Run Simulations
-1. View session dashboard
-2. Each simulation is initially "pending"
-3. Click "Run" to execute individual simulations
-4. Or batch-run all simulations
+1. Select a simulation ID
+2. Click **Encode** then **Decode**
+3. Generate graphs and lock completed simulations
 
 ### View Results
 - **Per-Simulation**: Individual metrics, graphs, test results
@@ -144,7 +127,7 @@ Session-level outputs:
 
 This platform provides:
 
-1. **Quantitative Data**: 50 controlled experiments with reproducible results
+1. **Quantitative Data**: Controlled experiments with reproducible results
 2. **Quality Metrics**: Comprehensive image quality degradation analysis
 3. **Performance Analysis**: Computational efficiency evaluation
 4. **Statistical Evidence**: Payload-quality relationship modeling
@@ -153,28 +136,19 @@ This platform provides:
 
 ```
 steganography/
-├── app/
-│   ├── __init__.py              # Flask app factory
-│   ├── models.py                # SQLAlchemy ORM models
+├── app.py                       # Flask app and API routes
+├── config.py                    # Configuration
+├── backend/
 │   ├── lsb_engine.py            # LSB embedding/extraction
 │   ├── metrics.py               # Image quality metrics
+│   ├── analytics.py             # Aggregation utilities
 │   ├── visualization.py         # Graph generation
-│   ├── testing.py               # Testing framework
-│   ├── simulation_engine.py     # Workflow orchestration
-│   ├── utils.py                 # Helper functions
-│   └── routes.py                # Flask blueprints
+│   └── database.py              # JSON storage
 ├── templates/                   # HTML templates
-│   ├── dashboard/
-│   ├── simulation/
-│   ├── analytics/
-│   └── testing/
-├── uploads/                     # Runtime files
-│   ├── stego_images/
-│   ├── graphs/
-│   └── test_images/
-├── config.py                    # Configuration
+├── static/                      # CSS and JavaScript
+├── uploads/                     # Uploaded cover images
+├── results/                     # Stego outputs, graphs, exports
 ├── requirements.txt             # Dependencies
-├── .env.example                 # Environment template
 └── run.py                       # Entry point
 ```
 
