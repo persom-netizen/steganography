@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Session Analytics - Xect{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <a href="/session/{{ session.id }}" class="btn btn-secondary mb-3">← Back to Session</a>
+        
+        <div class="card">
+            <div class="card-body">
+                <h1 class="card-title">Analytics: {{ session.session_name }}</h1>
+                <p class="card-text text-muted">Aggregate analysis across all {{ simulations|length }} completed simulations</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if simulations %}
+
+<!-- Summary Statistics -->
+<div class="row mb-4">
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Average PSNR</h6>
+                <p class="h4">{{ "%.2f"|format(simulations|map(attribute='psnr')|sum / simulations|length) }} dB</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Average MSE</h6>
+                <p class="h4">{{ "%.4f"|format(simulations|map(attribute='mse')|sum / simulations|length) }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Average SSIM</h6>
+                <p class="h4">{{ "%.4f"|format(simulations|map(attribute='ssim')|sum / simulations|length) }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Extraction Accuracy</h6>
+                <p class="h4">{{ "%.2f"|format(simulations|map(attribute='extraction_accuracy')|sum / simulations|length) }}%</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Payload Level Breakdown -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Performance by Payload Level</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Payload Level</th>
+                            <th>Avg PSNR</th>
+                            <th>Avg MSE</th>
+                            <th>Avg SSIM</th>
+                            <th>Avg Q-Index</th>
+                            <th>Accuracy</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for level in range(1, 6) %}
+                            {% set level_sims = simulations|selectattr('payload_level', 'equalto', level)|list %}
+                            {% if level_sims %}
+                            <tr>
+                                <td><strong>Level {{ level }}</strong></td>
+                                <td>{{ "%.2f"|format(level_sims|map(attribute='psnr')|sum / level_sims|length) }}</td>
+                                <td>{{ "%.4f"|format(level_sims|map(attribute='mse')|sum / level_sims|length) }}</td>
+                                <td>{{ "%.4f"|format(level_sims|map(attribute='ssim')|sum / level_sims|length) }}</td>
+                                <td>{{ "%.4f"|format(level_sims|map(attribute='q_index')|sum / level_sims|length) }}</td>
+                                <td>{{ "%.2f"|format(level_sims|map(attribute='extraction_accuracy')|sum / level_sims|length) }}%</td>
+                                <td>{{ level_sims|length }}</td>
+                            </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Graphs Placeholder -->
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <strong>Note:</strong> Aggregate visualizations (payload vs quality curves, tradeoff analysis, timing analysis) 
+            are generated once all 50 simulations are completed. Current completed: {{ simulations|length }}/50
+        </div>
+    </div>
+</div>
+
+{% else %}
+
+<div class="card">
+    <div class="card-body text-center py-5">
+        <h5>No Completed Simulations</h5>
+        <p class="text-muted">Run simulations to see analytics and visualizations</p>
+        <a href="/session/{{ session.id }}" class="btn btn-primary">Go to Session</a>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
