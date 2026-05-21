@@ -1,6 +1,6 @@
 # Xect - Image Steganography Simulation System
 
-A web-based quantitative analysis platform for Sequential LSB (Least Significant Bit) image steganography research.
+A web-based quantitative analysis platform for Adaptive LSB (Least Significant Bit) image steganography research.
 
 ## Overview
 
@@ -13,17 +13,17 @@ Xect implements a controlled experimental framework to evaluate:
 ## System Architecture
 
 ### Controlled Experimental Design
-- **4 Payload Levels**: 1KB, 25KB, 50KB, 100KB
-- **10 Cover Images**: Resolution variety (256×256, 512×512, 1024×1024)
-- **Total Simulations**: 40 (4 levels × 10 images)
+- **5 Payload Levels**: 10%, 25%, 50%, 75%, 90% of adaptive capacity
+- **4 Supported Resolutions**: 128×128, 256×256, 512×512, 1024×1024
+- **Total Conditions**: 20 per cover image (5 payload levels × 4 resolutions)
 
 ### Core Components
 
-#### 1. LSB Sequential Embedding Engine (`app/lsb_engine.py`)
-- Consecutive bit embedding across RGB pixels
-- Header (32-bit length) + payload encoding
-- Maximum capacity calculation per image
-- Extraction with accuracy verification
+#### 1. Adaptive LSB Embedding Engine (`backend/adaptive_lsb_engine.py`)
+- Laplacian and local-texture complexity scoring
+- Adaptive 0/2/3/4-bit allocation per pixel
+- High-complexity pixel prioritization with deterministic extraction
+- Maximum adaptive capacity calculation per image
 
 #### 2. Image Quality Metrics (`app/metrics.py`)
 - **MSE**: Mean Squared Error (lower = better)
@@ -162,9 +162,9 @@ Edit `.env` for:
 
 ## Performance Notes
 
-- **Small images** (256×256): ~10-50ms embedding/extraction
-- **Large images** (1024×1024): ~100-500ms
-- **High payloads** (100KB+): May exceed image capacity
+- **Small images** (128×128 to 256×256): fast adaptive embedding/extraction
+- **Large images** (1024×1024): higher capacity with more computation
+- **High payloads** (75%-90%): increase distortion more than lower payload percentages
 
 ## Future Enhancements
 
