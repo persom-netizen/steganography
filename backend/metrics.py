@@ -52,6 +52,23 @@ def q_index(original: np.ndarray, stego: np.ndarray) -> float:
     return float(max(min(q, 1.0), -1.0))
 
 
+def chi_square_lsb(stego: np.ndarray | str) -> float:
+    if isinstance(stego, str):
+        flat = _load_rgb(stego).astype(np.uint8).reshape(-1)
+    else:
+        flat = np.asarray(stego, dtype=np.uint8).reshape(-1)
+    chi_value = 0.0
+    for value in range(0, 256, 2):
+        even_count = int(np.count_nonzero(flat == value))
+        odd_count = int(np.count_nonzero(flat == value + 1))
+        pair_total = even_count + odd_count
+        if pair_total == 0:
+            continue
+        expected = pair_total / 2.0
+        chi_value += ((even_count - expected) ** 2 + (odd_count - expected) ** 2) / expected
+    return float(chi_value)
+
+
 def compute_metrics(original_path: str, stego_path: str) -> dict:
     orig = _load_rgb(original_path)
     stego = _load_rgb(stego_path)

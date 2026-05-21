@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Xect Dashboard{% endblock %}
+{% block title %}Xect Pipeline{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -8,85 +8,199 @@
 {% block content %}
 <div class="page-header mt-3 rounded">
   <div class="container py-2">
-    <h1>Xect Simulation Dashboard</h1>
-    <p class="mb-0">Adaptive LSB simulation and quantitative analysis platform</p>
+    <h1>Xect Simulation Pipeline</h1>
+    <p class="mb-0">Upload, preprocess, inject payload, and generate stego and difference images.</p>
   </div>
 </div>
 
-<div class="row g-3">
-  <div class="col-lg-7">
-    <div class="card">
-      <div class="card-header">Simulation Cards</div>
-      <div class="card-body">
-        <div id="simulation-cards" class="row g-2"></div>
+<div class="container-fluid px-0">
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card h-100 panel-card">
+        <div class="card-header">Input Panel</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">Upload Cover Image (PNG/BMP)</label>
+            <input id="cover-image" type="file" class="form-control" accept=".png,.bmp,image/png,image/bmp">
+            <div class="form-text">Supported square resolutions: {{ supported_resolutions|join(", ") }} px</div>
+            <button id="upload-btn" class="btn btn-secondary btn-sm mt-2">Upload Image</button>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Edge Threshold Low</label>
+              <input id="edge-threshold-low" type="range" class="form-range" min="0" max="100" value="30">
+              <div class="small text-muted">Low: <span id="edge-low-value">0.30</span></div>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Edge Threshold High</label>
+              <input id="edge-threshold-high" type="range" class="form-range" min="0" max="100" value="70">
+              <div class="small text-muted">High: <span id="edge-high-value">0.70</span></div>
+            </div>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Payload Capacity</label>
+              <select id="payload-size" class="form-select">
+                {% for option in payload_options %}
+                <option value="{{ option }}">{{ option }}%</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Bit Depth</label>
+              <select id="bit-depth" class="form-select">
+                <option value="1">1 bit/channel</option>
+                <option value="2">2 bits/channel</option>
+                <option value="3" selected>3 bits/channel</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Secret Message</label>
+            <textarea id="secret-message" class="form-control" rows="6" placeholder="Enter uncompressed text"></textarea>
+            <div id="secret-message-counter" class="form-text text-end">0/0</div>
+            <div id="capacity-summary" class="small text-muted mt-1">Bit limit: 0 | Word limit: 0</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Or Upload .txt Payload</label>
+            <input id="payload-file" type="file" class="form-control" accept=".txt,text/plain">
+          </div>
+
+          <div class="d-grid gap-2">
+            <button id="preprocess-btn" class="btn btn-outline-primary">Preprocess</button>
+            <button id="run-btn" class="btn btn-primary">Run Simulation</button>
+          </div>
+
+          <div id="status-box" class="alert alert-info mt-3 mb-0">Ready.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card h-100 panel-card">
+        <div class="card-header">Visual Panel</div>
+        <div class="card-body">
+          <div class="visual-grid">
+            <figure class="visual-frame">
+              <figcaption>Original Image</figcaption>
+              <img id="original-image-preview" class="img-fluid border rounded d-none" alt="Original cover image preview">
+              <div id="original-image-empty" class="text-muted small">Upload a cover image.</div>
+            </figure>
+            <figure class="visual-frame">
+              <figcaption>Edge Map</figcaption>
+              <img id="edge-image-preview" class="img-fluid border rounded d-none" alt="Generated edge map preview">
+              <div id="edge-image-empty" class="text-muted small">Preprocessing creates the edge map.</div>
+            </figure>
+            <figure class="visual-frame">
+              <figcaption>Stego Image</figcaption>
+              <img id="stego-image-preview" class="img-fluid border rounded d-none" alt="Stego image preview">
+              <div id="stego-image-empty" class="text-muted small">Run the simulation to generate the stego image.</div>
+              <button id="decode-btn" class="btn btn-outline-success btn-sm mt-2">Decode</button>
+            </figure>
+            <figure class="visual-frame visual-frame-wide">
+              <figcaption>Difference Image</figcaption>
+              <img id="difference-image-preview" class="img-fluid border rounded d-none" alt="Difference image preview">
+              <div id="difference-image-empty" class="text-muted small">Difference image appears after embedding.</div>
+            </figure>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="col-lg-5">
-    <div class="card">
-      <div class="card-header">Simulation Panel</div>
-      <div class="card-body">
-        <div class="mb-2">
-          <label class="form-label">Simulation ID</label>
-          <input id="simulation-id" type="number" class="form-control" min="1" value="1">
+  <div class="row g-3 mt-1">
+    <div class="col-12">
+      <div class="card panel-card">
+        <div class="card-header">Run Metrics</div>
+        <div class="card-body table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <tbody id="metrics-body">
+              <tr><th>Total Available Edge Pixels</th><td id="metric-edge-pixels">-</td></tr>
+              <tr><th>Maximum Possible Word Count</th><td id="metric-max-words">-</td></tr>
+              <tr><th>Actual Embedded Word Count</th><td id="metric-embedded-words">-</td></tr>
+              <tr><th>PSNR (dB)</th><td id="metric-psnr">-</td></tr>
+              <tr><th>SSIM</th><td id="metric-ssim">-</td></tr>
+              <tr><th>Chi-Square</th><td id="metric-chi-square">-</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div class="mb-2">
-          <label class="form-label">Upload Cover Image (PNG/BMP)</label>
-          <input id="cover-image" type="file" class="form-control" accept=".png,.bmp,image/png,image/bmp">
-          <div class="form-text">Supported square resolutions: {{ supported_resolutions|join(", ") }} px</div>
-          <button id="upload-btn" class="btn btn-secondary btn-sm mt-2">Upload Image</button>
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Payload Capacity</label>
-          <select id="payload-size" class="form-select">
-            {% for option in payload_options %}
-            <option value="{{ option }}">{{ option }}%</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Secret Message</label>
-          <textarea id="secret-message" class="form-control" rows="3" placeholder="Enter secret message"></textarea>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-          <button id="encode-btn" class="btn btn-primary">Encode</button>
-          <button id="decode-btn" class="btn btn-success">Decode</button>
-          <button id="graph-btn" class="btn btn-warning">Generate Graphs</button>
-          <button id="blackbox-btn" class="btn btn-outline-dark">Black Box Testing</button>
-          <button id="whitebox-btn" class="btn btn-outline-dark">White Box Testing</button>
-          <button id="lock-btn" class="btn btn-dark">Lock</button>
-          <button id="export-btn" class="btn btn-outline-primary">Export</button>
-        </div>
-        <div id="status-box" class="alert alert-info mt-3 mb-0">Ready.</div>
       </div>
     </div>
   </div>
-</div>
 
-<div class="row g-3 mt-1">
-  <div class="col-lg-6">
-    <div class="card h-100">
-      <div class="card-header">Metrics</div>
-      <div class="card-body table-responsive">
-        <table class="table table-sm">
-          <tbody id="metrics-body">
-          <tr><th>MSE</th><td>-</td></tr>
-          <tr><th>PSNR</th><td>-</td></tr>
-          <tr><th>SSIM</th><td>-</td></tr>
-          <tr><th>Q Index</th><td>-</td></tr>
-          <tr><th>Embedding Time (ms)</th><td>-</td></tr>
-          <tr><th>Extraction Accuracy (%)</th><td>-</td></tr>
-          </tbody>
-        </table>
+  <div class="row g-3 mt-1">
+    <div class="col-12">
+      <div class="card panel-card">
+        <div class="card-header">Decoded Output</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-lg-6">
+              <label class="form-label">Recovered Message</label>
+              <textarea id="decoded-message" class="form-control" rows="6" readonly placeholder="Decode the stego image to reveal the hidden message."></textarea>
+            </div>
+            <div class="col-lg-6">
+              <label class="form-label">Restored Original Image</label>
+              <div class="border rounded p-2 bg-white">
+                <img id="restored-image-preview" class="img-fluid border rounded d-none" alt="Restored original image preview">
+                <div id="restored-image-empty" class="text-muted small">The original cover image will be shown here after decoding.</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-lg-6">
-    <div class="card h-100">
-      <div class="card-header">Graphs / Evidence</div>
-      <div class="card-body">
-        <div id="graph-links" class="small"></div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-12">
+      <div class="card panel-card">
+        <div class="card-header">Matrix Analysis Mode</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <label class="form-label">Benchmark Images</label>
+              <input id="benchmark-images" type="file" class="form-control" accept=".png,.bmp,image/png,image/bmp" multiple>
+            </div>
+            <div class="col-lg-4">
+              <label class="form-label">Payload Text for Batch Runs</label>
+              <textarea id="matrix-payload-text" class="form-control" rows="4" placeholder="Enter payload text for matrix analysis"></textarea>
+            </div>
+            <div class="col-lg-2">
+              <label class="form-label">Payloads</label>
+              <input id="matrix-payload-options" type="text" class="form-control" value="10,25,50,75,100">
+            </div>
+            <div class="col-lg-2 d-flex align-items-end">
+              <button id="matrix-run-btn" class="btn btn-warning w-100">Run Matrix</button>
+            </div>
+          </div>
+
+          <div class="alert alert-light border mt-3 mb-0">
+            <div class="fw-semibold mb-1">Recommendation Report</div>
+            <div id="matrix-summary" class="small text-muted">Run matrix analysis to generate a recommendation.</div>
+          </div>
+
+          <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Image</th>
+                  <th>Payload %</th>
+                  <th>Bit Depth</th>
+                  <th>PSNR</th>
+                  <th>SSIM</th>
+                  <th>Chi-Square</th>
+                </tr>
+              </thead>
+              <tbody id="matrix-results-body">
+                <tr><td colspan="6" class="text-muted">No matrix analysis runs yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>

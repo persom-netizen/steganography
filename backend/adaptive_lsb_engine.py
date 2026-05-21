@@ -5,7 +5,7 @@ from typing import Iterable
 import numpy as np
 from PIL import Image
 
-from backend.lsb_engine import LSBError, extraction_accuracy, validate_image
+from backend.lsb_engine import LSBError, validate_image
 from config import Config
 
 HEADER_BYTES = 4
@@ -42,6 +42,24 @@ def _normalize(arr: np.ndarray) -> np.ndarray:
     return (arr - min_val) / (max_val - min_val)
 
 
+def _clamp_threshold(value: float | int | None, default: float) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    return float(min(max(numeric, 0.0), 1.0))
+
+
+def _resolve_threshold_range(lower_threshold: float | int | None, upper_threshold: float | int | None) -> tuple[float, float]:
+    lower = _clamp_threshold(lower_threshold, 0.3)
+    upper = _clamp_threshold(upper_threshold, 0.7)
+    if upper < lower:
+        lower, upper = upper, lower
+    if abs(upper - lower) < 1e-6:
+        upper = min(1.0, lower + 0.1)
+    return lower, upper
+
+
 def _box_mean(arr: np.ndarray, radius: int = 1) -> np.ndarray:
     kernel = radius * 2 + 1
     padded = np.pad(arr, radius, mode="edge")
@@ -75,12 +93,31 @@ def calculate_complexity_map(image_array: np.ndarray) -> np.ndarray:
     return np.clip((0.6 * edge_score) + (0.4 * texture_score), 0.0, 1.0)
 
 
-def build_bit_allocation_map(image_array: np.ndarray) -> np.ndarray:
+def calculate_edge_map(image_array: np.ndarray, lower_threshold: float | int | None = 0.3, upper_threshold: float | int | None = 0.7) -> np.ndarray:
     complexity = calculate_complexity_map(image_array)
+    lower, upper = _resolve_threshold_range(lower_threshold, upper_threshold)
+    edge_map = np.zeros_like(complexity, dtype=np.uint8)
+    mid = lower + ((upper - lower) / 2.0)
+    edge_map[(complexity >= lower) & (complexity < mid)] = 85
+    edge_map[(complexity >= mid) & (complexity < upper)] = 170
+    edge_map[complexity >= upper] = 255
+    return edge_map
+
+
+def build_bit_allocation_map(
+    image_array: np.ndarray,
+    lower_threshold: float | int | None = 0.3,
+    upper_threshold: float | int | None = 0.7,
+    bit_depth: int = 4,
+) -> np.ndarray:
+    complexity = calculate_complexity_map(image_array)
+    lower, upper = _resolve_threshold_range(lower_threshold, upper_threshold)
+    bit_depth = int(np.clip(bit_depth, 1, len(_BIT_POSITIONS)))
     allocation = np.zeros_like(complexity, dtype=np.uint8)
-    allocation[(complexity >= 0.3) & (complexity < 0.5)] = 2
-    allocation[(complexity >= 0.5) & (complexity < 0.7)] = 3
-    allocation[complexity >= 0.7] = 4
+    mid = lower + ((upper - lower) / 2.0)
+    allocation[(complexity >= lower) & (complexity < mid)] = min(1, bit_depth)
+    allocation[(complexity >= mid) & (complexity < upper)] = min(2, bit_depth)
+    allocation[complexity >= upper] = bit_depth
     return allocation
 
 
@@ -102,15 +139,21 @@ def _iter_embedding_positions(complexity_map: np.ndarray, allocation_map: np.nda
             yield y, x, channel, plane
 
 
-def analyze_image_capacity(input_path: str) -> dict:
+def analyze_image_capacity(
+    input_path: str,
+    lower_threshold: float | int | None = 0.3,
+    upper_threshold: float | int | None = 0.7,
+    bit_depth: int = 4,
+) -> dict:
     image_array = _load_rgb(input_path)
     complexity_map = calculate_complexity_map(image_array)
-    allocation_map = build_bit_allocation_map(image_array)
+    allocation_map = build_bit_allocation_map(image_array, lower_threshold, upper_threshold, bit_depth)
     capacity_bits = int(np.sum(allocation_map, dtype=np.int64))
     return {
         "dimensions": list(image_array.shape[:2]),
         "capacity_bits": capacity_bits,
         "capacity_bytes": max((capacity_bits - HEADER_BITS) // 8, 0),
+        "edge_pixel_count": int(np.count_nonzero(allocation_map)),
         "allocation_summary": {
             "skip_pixels": int(np.count_nonzero(allocation_map == 0)),
             "two_bit_pixels": int(np.count_nonzero(allocation_map == 2)),
@@ -136,10 +179,17 @@ def calculate_resolution_capacity(resolution: int, input_path: str) -> int:
     return analyze_image_capacity(input_path)["capacity_bytes"]
 
 
-def encode_message_in_image(input_path: str, message: str, output_path: str) -> tuple[int, int]:
+def encode_message_in_image(
+    input_path: str,
+    message: str,
+    output_path: str,
+    lower_threshold: float | int | None = 0.3,
+    upper_threshold: float | int | None = 0.7,
+    bit_depth: int = 4,
+) -> tuple[int, int]:
     image_array = _load_rgb(input_path)
     complexity_map = calculate_complexity_map(image_array)
-    allocation_map = build_bit_allocation_map(image_array)
+    allocation_map = build_bit_allocation_map(image_array, lower_threshold, upper_threshold, bit_depth)
     capacity_bits = int(np.sum(allocation_map, dtype=np.int64))
     max_capacity_bytes = max((capacity_bits - HEADER_BITS) // 8, 0)
 
@@ -167,11 +217,38 @@ def encode_message_in_image(input_path: str, message: str, output_path: str) -> 
     return len(payload), max_capacity_bytes
 
 
-def decode_message_from_image(stego_path: str, cover_path: str | None = None) -> str:
+def save_edge_map_image(
+    input_path: str,
+    output_path: str,
+    lower_threshold: float | int | None = 0.3,
+    upper_threshold: float | int | None = 0.7,
+) -> str:
+    image_array = _load_rgb(input_path)
+    edge_map = calculate_edge_map(image_array, lower_threshold, upper_threshold)
+    Image.fromarray(edge_map, mode="L").save(output_path)
+    return output_path
+
+
+def save_difference_image(original_path: str, stego_path: str, output_path: str, amplify: int = 12) -> str:
+    original = _load_rgb(original_path).astype(np.int16)
+    stego = _load_rgb(stego_path).astype(np.int16)
+    difference = np.abs(stego - original)
+    amplified = np.clip(difference * int(max(amplify, 1)), 0, 255).astype(np.uint8)
+    Image.fromarray(amplified, mode="RGB").save(output_path)
+    return output_path
+
+
+def decode_message_from_image(
+    stego_path: str,
+    cover_path: str | None = None,
+    lower_threshold: float | int | None = 0.3,
+    upper_threshold: float | int | None = 0.7,
+    bit_depth: int = 4,
+) -> str:
     stego_array = _load_rgb(stego_path)
     reference_array = _load_rgb(cover_path) if cover_path else stego_array
     complexity_map = calculate_complexity_map(reference_array)
-    allocation_map = build_bit_allocation_map(reference_array)
+    allocation_map = build_bit_allocation_map(reference_array, lower_threshold, upper_threshold, bit_depth)
     ordered_positions = _iter_embedding_positions(complexity_map, allocation_map)
 
     header_bits = []
