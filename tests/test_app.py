@@ -2,6 +2,7 @@ import io
 import os
 import unittest
 
+import numpy as np
 from PIL import Image
 
 from app import create_app
@@ -26,9 +27,13 @@ class XectApiTestCase(unittest.TestCase):
             os.remove(Config.DATABASE_FILE)
 
     def _sample_png(self):
-        image = Image.new("RGB", (128, 128), color=(120, 80, 200))
+        grid_y, grid_x = np.indices((128, 128))
+        image = np.zeros((128, 128, 3), dtype=np.uint8)
+        image[..., 0] = (grid_x * 5 + grid_y * 3) % 256
+        image[..., 1] = (grid_x * 9) % 256
+        image[..., 2] = ((grid_x ^ grid_y) * 11) % 256
         buf = io.BytesIO()
-        image.save(buf, format="PNG")
+        Image.fromarray(image, mode="RGB").save(buf, format="PNG")
         buf.seek(0)
         return buf
 
@@ -49,15 +54,18 @@ class XectApiTestCase(unittest.TestCase):
 
         encode = self.client.post(
             "/api/encode",
-            json={"simulation_id": 1, "payload_size_kb": 1, "secret_message": "hello xect"},
+            json={"simulation_id": 1, "payload_percentage": 10, "secret_message": "hello xect"},
         )
         self.assertEqual(encode.status_code, 200)
+        encoded_sim = encode.get_json()["simulation"]
+        self.assertEqual(encoded_sim["payload_percentage"], 10)
+        self.assertGreater(encoded_sim["capacity_bytes"], 0)
 
         decode = self.client.post("/api/decode", json={"simulation_id": 1})
         self.assertEqual(decode.status_code, 200)
         sim = decode.get_json()["simulation"]
         self.assertEqual(sim["extracted_message"], "hello xect")
-        self.assertIsInstance(sim["extraction_accuracy"], float)
+        self.assertEqual(sim["extraction_accuracy"], 100.0)
 
     def test_lock_blocks_rerun(self):
         upload = self.client.post(
@@ -71,9 +79,22 @@ class XectApiTestCase(unittest.TestCase):
 
         encode = self.client.post(
             "/api/encode",
-            json={"simulation_id": 2, "payload_size_kb": 1, "secret_message": "blocked"},
+            json={"simulation_id": 2, "payload_percentage": 10, "secret_message": "blocked"},
         )
         self.assertEqual(encode.status_code, 409)
+
+    def test_upload_rejects_unsupported_resolution(self):
+        image = Image.new("RGB", (300, 300), color=(120, 80, 200))
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        buf.seek(0)
+
+        upload = self.client.post(
+            "/api/upload-image",
+            data={"simulation_id": "3", "image": (buf, "test.png")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(upload.status_code, 400)
 
 
 if __name__ == "__main__":

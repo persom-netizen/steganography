@@ -16,4 +16,11 @@ class Config:
     MIN_DIMENSION = 64
     MAX_DIMENSION = 4096
     DEFAULT_SIMULATION_COUNT = int(os.environ.get("SIMULATION_COUNT", 6))
-    PAYLOAD_OPTIONS_KB = [1, 25, 50, 100]
+    PAYLOAD_OPTIONS_PERCENT = [10, 25, 50, 75, 90]
+    SUPPORTED_RESOLUTIONS = [128, 256, 512, 1024]
+    ADAPTIVE_BIT_DEPTHS = {
+        "high": {"range": (0.7, 1.0), "bits": 4},
+        "medium_high": {"range": (0.5, 0.7), "bits": 3},
+        "medium": {"range": (0.3, 0.5), "bits": 2},
+        "low": {"range": (0.0, 0.3), "bits": 0},
+    }
