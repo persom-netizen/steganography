@@ -9,7 +9,7 @@
 <div class="page-header mt-3 rounded">
   <div class="container py-2">
     <h1>Xect Simulation Dashboard</h1>
-    <p class="mb-0">Sequential LSB simulation and quantitative analysis platform</p>
+    <p class="mb-0">Adaptive LSB simulation and quantitative analysis platform</p>
   </div>
 </div>
 
@@ -34,13 +34,14 @@
         <div class="mb-2">
           <label class="form-label">Upload Cover Image (PNG/BMP)</label>
           <input id="cover-image" type="file" class="form-control" accept=".png,.bmp,image/png,image/bmp">
+          <div class="form-text">Supported square resolutions: {{ supported_resolutions|join(", ") }} px</div>
           <button id="upload-btn" class="btn btn-secondary btn-sm mt-2">Upload Image</button>
         </div>
         <div class="mb-2">
-          <label class="form-label">Payload Size</label>
+          <label class="form-label">Payload Capacity</label>
           <select id="payload-size" class="form-select">
             {% for option in payload_options %}
-            <option value="{{ option }}">{{ option }} KB</option>
+            <option value="{{ option }}">{{ option }}%</option>
             {% endfor %}
           </select>
         </div>

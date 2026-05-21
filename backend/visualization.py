@@ -20,7 +20,7 @@ def generate_payload_metric_graph(simulations: list[dict], metric_key: str, titl
     payloads = []
     values = []
     for sim in simulations:
-        payload = sim.get("payload_size_kb")
+        payload = sim.get("payload_percentage", sim.get("payload_size_kb"))
         metric = (sim.get("metrics") or {}).get(metric_key)
         if isinstance(payload, (int, float)) and isinstance(metric, (int, float)):
             payloads.append(payload)
@@ -32,7 +32,7 @@ def generate_payload_metric_graph(simulations: list[dict], metric_key: str, titl
         paired = sorted(zip(payloads, values), key=lambda p: p[0])
         plt.plot([p[0] for p in paired], [p[1] for p in paired], color="#2c3e50")
     plt.title(title)
-    plt.xlabel("Payload Size (KB)")
+    plt.xlabel("Payload Capacity (%)")
     plt.ylabel(ylabel)
     plt.grid(alpha=0.3)
     return _save_plot(output_path)
@@ -41,7 +41,7 @@ def generate_payload_metric_graph(simulations: list[dict], metric_key: str, titl
 def generate_accuracy_graph(simulations: list[dict], output_path: str) -> str:
     payloads, accuracies = [], []
     for sim in simulations:
-        payload = sim.get("payload_size_kb")
+        payload = sim.get("payload_percentage", sim.get("payload_size_kb"))
         acc = sim.get("extraction_accuracy")
         if isinstance(payload, (int, float)) and isinstance(acc, (int, float)):
             payloads.append(payload)
@@ -49,8 +49,8 @@ def generate_accuracy_graph(simulations: list[dict], output_path: str) -> str:
 
     plt.figure(figsize=(6, 4))
     plt.scatter(payloads, accuracies, c="#27ae60")
-    plt.title("Payload Size vs Extraction Accuracy")
-    plt.xlabel("Payload Size (KB)")
+    plt.title("Payload Capacity vs Extraction Accuracy")
+    plt.xlabel("Payload Capacity (%)")
     plt.ylabel("Extraction Accuracy (%)")
     plt.grid(alpha=0.3)
     return _save_plot(output_path)
@@ -59,7 +59,7 @@ def generate_accuracy_graph(simulations: list[dict], output_path: str) -> str:
 def generate_embedding_time_graph(simulations: list[dict], output_path: str) -> str:
     payloads, times = [], []
     for sim in simulations:
-        payload = sim.get("payload_size_kb")
+        payload = sim.get("payload_percentage", sim.get("payload_size_kb"))
         timing = sim.get("embedding_time_ms")
         if isinstance(payload, (int, float)) and isinstance(timing, (int, float)):
             payloads.append(payload)
@@ -67,8 +67,8 @@ def generate_embedding_time_graph(simulations: list[dict], output_path: str) -> 
 
     plt.figure(figsize=(6, 4))
     plt.scatter(payloads, times, c="#f39c12")
-    plt.title("Payload Size vs Embedding Time")
-    plt.xlabel("Payload Size (KB)")
+    plt.title("Payload Capacity vs Embedding Time")
+    plt.xlabel("Payload Capacity (%)")
     plt.ylabel("Embedding Time (ms)")
     plt.grid(alpha=0.3)
     return _save_plot(output_path)

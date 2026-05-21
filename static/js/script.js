@@ -107,12 +107,12 @@ document.getElementById("upload-btn").addEventListener("click", async () => {
 
 document.getElementById("encode-btn").addEventListener("click", async () => {
   try {
-    const payload_size_kb = Number(document.getElementById("payload-size").value);
+    const payload_percentage = Number(document.getElementById("payload-size").value);
     const secret_message = document.getElementById("secret-message").value;
     await api("/api/encode", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ simulation_id: simulationId(), payload_size_kb, secret_message }),
+      body: JSON.stringify({ simulation_id: simulationId(), payload_percentage, secret_message }),
     });
     setStatus("Encoding completed and metrics computed", "success");
     await loadSimulations();

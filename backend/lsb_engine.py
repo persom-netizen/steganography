@@ -36,6 +36,8 @@ def validate_image(path: str) -> Tuple[int, int, str]:
             raise LSBError("Image dimensions are too small")
         if width > Config.MAX_DIMENSION or height > Config.MAX_DIMENSION:
             raise LSBError("Image dimensions are too large")
+        if width != height or width not in Config.SUPPORTED_RESOLUTIONS:
+            raise LSBError(f"Unsupported image resolution. Use square images with one of {Config.SUPPORTED_RESOLUTIONS}")
         return width, height, fmt
 
 

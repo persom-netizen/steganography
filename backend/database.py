@@ -23,7 +23,8 @@ def _ensure_file() -> None:
                     "locked": False,
                     "image_path": None,
                     "stego_image_path": None,
-                    "payload_size_kb": None,
+                    "payload_percentage": None,
+                    "payload_target_bytes": None,
                     "secret_message": "",
                     "extracted_message": "",
                     "metrics": {},
@@ -32,6 +33,8 @@ def _ensure_file() -> None:
                     "embedding_time_ms": None,
                     "extraction_time_ms": None,
                     "extraction_accuracy": None,
+                    "capacity_bytes": None,
+                    "algorithm": "adaptive_lsb",
                     "created_at": _utc_now(),
                     "updated_at": _utc_now(),
                 }

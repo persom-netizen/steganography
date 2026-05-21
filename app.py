@@ -4,9 +4,17 @@ import uuid
 
 from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 
+from backend.adaptive_lsb_engine import (
+    LSBError,
+    analyze_image_capacity,
+    calculate_payload_bytes,
+    decode_message_from_image,
+    encode_message_in_image,
+    extraction_accuracy,
+    validate_image,
+)
 from backend.analytics import aggregate_statistics
 from backend.database import export_results, get_completed_simulations, get_simulation, init_storage, list_simulations, update_simulation
-from backend.lsb_engine import LSBError, decode_message_from_image, encode_message_in_image, extraction_accuracy, validate_image
 from backend.metrics import compute_metrics
 from backend.visualization import (
     generate_accuracy_graph,
@@ -24,13 +32,21 @@ def create_app() -> Flask:
 
     @app.get("/")
     def dashboard():
-        return render_template("index.html", payload_options=Config.PAYLOAD_OPTIONS_KB)
+        return render_template(
+            "index.html",
+            payload_options=Config.PAYLOAD_OPTIONS_PERCENT,
+            supported_resolutions=Config.SUPPORTED_RESOLUTIONS,
+        )
 
     @app.get("/session/new")
     @app.get("/analytics/session/<int:session_id>")
     @app.get("/testing/stats")
     def dashboard_alias(session_id: int | None = None):
-        return render_template("index.html", payload_options=Config.PAYLOAD_OPTIONS_KB)
+        return render_template(
+            "index.html",
+            payload_options=Config.PAYLOAD_OPTIONS_PERCENT,
+            supported_resolutions=Config.SUPPORTED_RESOLUTIONS,
+        )
 
     @app.post("/api/upload-image")
     def upload_image():
@@ -57,7 +73,14 @@ def create_app() -> Flask:
         except LSBError:
             if os.path.exists(save_path):
                 os.remove(save_path)
-            return jsonify({"error": "Invalid image. Only PNG/BMP with supported dimensions are accepted"}), 400
+            return jsonify(
+                {
+                    "error": (
+                        "Invalid image. Only PNG/BMP square images with resolutions "
+                        f"{Config.SUPPORTED_RESOLUTIONS} are accepted"
+                    )
+                }
+            ), 400
         except Exception:
             if os.path.exists(save_path):
                 os.remove(save_path)
@@ -74,6 +97,8 @@ def create_app() -> Flask:
                 "status": "image_uploaded",
                 "format": fmt,
                 "dimensions": [width, height],
+                "capacity_bytes": analyze_image_capacity(final_path)["capacity_bytes"],
+                "algorithm": "adaptive_lsb",
             },
         )
         return jsonify({"message": "Image uploaded", "simulation": sim})
@@ -82,11 +107,11 @@ def create_app() -> Flask:
     def encode():
         data = request.get_json(silent=True) or {}
         simulation_id = data.get("simulation_id")
-        payload_size_kb = data.get("payload_size_kb")
+        payload_percentage = data.get("payload_percentage")
         message = data.get("secret_message", "")
 
-        if simulation_id is None or payload_size_kb is None:
-            return jsonify({"error": "simulation_id and payload_size_kb are required"}), 400
+        if simulation_id is None or payload_percentage is None:
+            return jsonify({"error": "simulation_id and payload_percentage are required"}), 400
 
         sim = get_simulation(int(simulation_id))
         if not sim:
@@ -95,12 +120,13 @@ def create_app() -> Flask:
             return jsonify({"error": "Simulation is locked"}), 409
         if not sim.get("image_path"):
             return jsonify({"error": "Upload an image first"}), 400
-        if payload_size_kb not in Config.PAYLOAD_OPTIONS_KB:
-            return jsonify({"error": f"payload_size_kb must be one of {Config.PAYLOAD_OPTIONS_KB}"}), 400
+        if payload_percentage not in Config.PAYLOAD_OPTIONS_PERCENT:
+            return jsonify({"error": f"payload_percentage must be one of {Config.PAYLOAD_OPTIONS_PERCENT}"}), 400
 
-        payload_limit = int(payload_size_kb) * 1024
+        capacity = analyze_image_capacity(sim["image_path"])
+        payload_limit = calculate_payload_bytes(capacity["capacity_bytes"], int(payload_percentage))
         if len(message.encode("utf-8")) > payload_limit:
-            return jsonify({"error": "Secret message exceeds selected payload size"}), 400
+            return jsonify({"error": "Secret message exceeds the selected payload percentage"}), 400
 
         stego_path = os.path.join(app.config["RESULTS_FOLDER"], f"stego_sim_{simulation_id}.png")
 
@@ -117,13 +143,15 @@ def create_app() -> Flask:
             int(simulation_id),
             {
                 "stego_image_path": stego_path,
-                "payload_size_kb": int(payload_size_kb),
+                "payload_percentage": int(payload_percentage),
+                "payload_target_bytes": payload_limit,
                 "secret_message": message,
                 "metrics": metrics,
                 "status": "encoded",
                 "embedding_time_ms": round(elapsed_ms, 4),
                 "embedded_bytes": embedded_bytes,
                 "capacity_bytes": max_capacity_bytes,
+                "algorithm": "adaptive_lsb",
             },
         )
         return jsonify({"message": "Encoding completed", "simulation": updated})
@@ -143,7 +171,7 @@ def create_app() -> Flask:
 
         started = time.perf_counter()
         try:
-            extracted = decode_message_from_image(sim["stego_image_path"])
+            extracted = decode_message_from_image(sim["stego_image_path"], sim.get("image_path"))
         except LSBError:
             return jsonify({"error": "Decoding failed for the selected stego image"}), 400
         elapsed_ms = (time.perf_counter() - started) * 1000
@@ -172,7 +200,9 @@ def create_app() -> Flask:
                 "embedding_time_ms": sim.get("embedding_time_ms"),
                 "extraction_time_ms": sim.get("extraction_time_ms"),
                 "extraction_accuracy": sim.get("extraction_accuracy"),
-                "payload_size_kb": sim.get("payload_size_kb"),
+                "payload_percentage": sim.get("payload_percentage"),
+                "payload_target_bytes": sim.get("payload_target_bytes"),
+                "capacity_bytes": sim.get("capacity_bytes"),
             }
         )
 
@@ -190,14 +220,14 @@ def create_app() -> Flask:
             "payload_vs_psnr": generate_payload_metric_graph(
                 all_sims,
                 "psnr",
-                "Payload Size vs PSNR",
+                "Payload Percentage vs PSNR",
                 "PSNR (dB)",
                 os.path.join(graphs_dir, "payload_vs_psnr.png"),
             ),
             "payload_vs_mse": generate_payload_metric_graph(
                 all_sims,
                 "mse",
-                "Payload Size vs MSE",
+                "Payload Percentage vs MSE",
                 "MSE",
                 os.path.join(graphs_dir, "payload_vs_mse.png"),
             ),
