@@ -3,7 +3,9 @@ import json
 import time
 import uuid
 
-from flask import Flask, jsonify, render_template, request, send_from_directory
+import numpy as np
+from PIL import Image
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 
 from backend.adaptive_lsb_engine import (
     LSBError,
@@ -134,6 +136,29 @@ def _save_uploaded_file(uploaded, folder: str, prefix: str) -> str:
     final_path = os.path.join(folder, final_name)
     uploaded.save(final_path)
     return final_path
+
+
+def _load_rgb_flat_uint8(path: str) -> np.ndarray:
+    with Image.open(path) as image:
+        return np.array(image.convert("RGB"), dtype=np.uint8).reshape(-1)
+
+
+def _binary_text_from_image(image_path: str, compare_path: str | None = None, mark_changes: bool = False) -> str:
+    values = _load_rgb_flat_uint8(image_path)
+    compare_values = None
+    if compare_path:
+        compare_values = _load_rgb_flat_uint8(compare_path)
+        if compare_values.shape != values.shape:
+            raise LSBError("Original and stego image dimensions do not match")
+
+    lines: list[str] = []
+    for idx, value in enumerate(values):
+        bits = format(int(value), "08b")
+        if mark_changes and compare_values is not None and int(value) != int(compare_values[idx]):
+            lines.append(f"{idx}\tC{bits}")
+        else:
+            lines.append(f"{idx}\t{bits}")
+    return "\n".join(lines)
 
 
 def create_app() -> Flask:
@@ -512,6 +537,42 @@ def create_app() -> Flask:
         if not sim:
             return jsonify({"error": "Simulation not found"}), 404
         return jsonify(sim)
+
+    @flask_app.get("/api/simulation/<int:simulation_id>/binary-export")
+    def binary_export(simulation_id: int):
+        sim = get_simulation(simulation_id)
+        if not sim:
+            return jsonify({"error": "Simulation not found"}), 404
+
+        target = (request.args.get("target") or "").strip().lower()
+        if target not in {"original", "stego"}:
+            return jsonify({"error": "target must be 'original' or 'stego'"}), 400
+
+        original_path = sim.get("image_path")
+        stego_path = sim.get("stego_image_path")
+        if not original_path:
+            return jsonify({"error": "Original image not available"}), 400
+        if target == "stego" and not stego_path:
+            return jsonify({"error": "Stego image not available. Run the simulation first."}), 400
+
+        export_path = original_path if target == "original" else stego_path
+        if not export_path or not os.path.exists(export_path):
+            return jsonify({"error": "Requested image file not found"}), 404
+
+        compare_path = original_path if target == "stego" else None
+        mark_changes = target == "stego"
+
+        try:
+            binary_text = _binary_text_from_image(export_path, compare_path=compare_path, mark_changes=mark_changes)
+        except (OSError, ValueError, LSBError) as error:
+            return jsonify({"error": f"Unable to generate binary export: {error}"}), 400
+
+        filename = f"{target}_binary_sim_{simulation_id}.txt"
+        return Response(
+            binary_text,
+            mimetype="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
 
     @flask_app.get("/results/<path:filename>")
     def serve_results_file(filename: str):

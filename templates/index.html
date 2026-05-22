@@ -106,7 +106,10 @@
               <figcaption>Original Image</figcaption>
               <img id="original-image-preview" class="img-fluid border rounded d-none" alt="Original cover image preview">
               <div id="original-image-empty" class="text-muted small">Upload a cover image.</div>
-              <button id="download-original-btn" class="btn btn-outline-secondary btn-sm mt-2">Download Original</button>
+              <div class="d-flex gap-2 mt-2 flex-wrap">
+                <button id="download-original-btn" class="btn btn-outline-secondary btn-sm">Download Original</button>
+                <button id="binary-original-btn" class="btn btn-outline-dark btn-sm">Binary Conversion .txt</button>
+              </div>
             </figure>
 
             <figure class="visual-frame">
@@ -120,9 +123,10 @@
               <figcaption>Stego Image</figcaption>
               <img id="stego-image-preview" class="img-fluid border rounded d-none" alt="Stego image preview">
               <div id="stego-image-empty" class="text-muted small">Run the simulation to generate the stego image.</div>
-              <div class="d-flex gap-2 mt-2">
+              <div class="d-flex gap-2 mt-2 flex-wrap">
                 <button id="decode-btn" class="btn btn-outline-success btn-sm">Decode</button>
                 <button id="download-stego-btn" class="btn btn-outline-secondary btn-sm">Download Stego</button>
+                <button id="binary-stego-btn" class="btn btn-outline-dark btn-sm">Binary Conversion .txt</button>
               </div>
             </figure>
 

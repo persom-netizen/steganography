@@ -84,6 +84,15 @@ async function downloadImageByPath(pathValue, route, filename) {
   triggerDownload(await resp.blob(), `${filename}.png`);
 }
 
+async function downloadBinaryExport(target) {
+  if (!currentSimulation?.id && !currentSimulation?.simulation_id) {
+    throw new Error("Simulation is not loaded yet");
+  }
+  const simulationId = Number(currentSimulation.id || currentSimulation.simulation_id || 1);
+  const blob = await api(`/api/simulation/${simulationId}/binary-export?target=${encodeURIComponent(target)}`);
+  triggerDownload(blob, `${target}_binary_sim_${simulationId}.txt`);
+}
+
 function loadImage(url) { return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = `${url}?t=${Date.now()}`; }); }
 
 async function downloadCollage() {
@@ -190,6 +199,22 @@ async function runMatrixAnalysis() {
   const decodeSource = el("decode-source"); if (decodeSource) decodeSource.addEventListener("change", toggleDecodeMode);
 
   Object.entries({ "download-original-btn": {route: "/uploads", path: () => currentSimulation?.image_path, filename: "original_image"}, "download-edge-btn": {route: "/results", path: () => currentSimulation?.edge_map_path, filename: "edge_map"}, "download-stego-btn": {route: "/results", path: () => currentSimulation?.stego_image_path, filename: "stego_image"}, "download-difference-btn": {route: "/results", path: () => currentSimulation?.difference_image_path, filename: "difference_image"} }).forEach(([buttonId, cfg]) => { const b = el(buttonId); if (!b) return; b.addEventListener("click", async () => { try { await downloadImageByPath(cfg.path(), cfg.route, cfg.filename); } catch (e) { setStatus(e.message, "danger"); } }); });
+
+  const binaryOriginalBtn = el("binary-original-btn");
+  if (binaryOriginalBtn) {
+    binaryOriginalBtn.addEventListener("click", async () => {
+      try { await downloadBinaryExport("original"); }
+      catch (e) { setStatus(e.message, "danger"); }
+    });
+  }
+
+  const binaryStegoBtn = el("binary-stego-btn");
+  if (binaryStegoBtn) {
+    binaryStegoBtn.addEventListener("click", async () => {
+      try { await downloadBinaryExport("stego"); }
+      catch (e) { setStatus(e.message, "danger"); }
+    });
+  }
 
   const downloadCollageBtn = el("download-collage-btn"); if (downloadCollageBtn) downloadCollageBtn.addEventListener("click", async () => { try { await downloadCollage(); } catch (e) { setStatus(e.message, "danger"); } });
 
