@@ -92,6 +92,50 @@ def _serialize_simulation(sim: dict | None) -> dict:
     return sim or {}
 
 
+def _decode_stego_best_effort(stego_path: str, cover_path: str | None, threshold_low: float, threshold_high: float, bit_depth: int) -> str:
+    candidate_thresholds: list[tuple[float, float]] = [
+        (threshold_low, threshold_high),
+        (0.30, 0.70),
+        (0.25, 0.65),
+        (0.20, 0.60),
+        (0.35, 0.75),
+    ]
+    candidate_bit_depths = [bit_depth, 3, 2, 4, 1]
+    seen: set[tuple[float, float, int]] = set()
+
+    last_error: LSBError | None = None
+    for candidate_low, candidate_high in candidate_thresholds:
+        for candidate_depth in candidate_bit_depths:
+            key = (round(candidate_low, 4), round(candidate_high, 4), int(candidate_depth))
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                return decode_message_from_image(
+                    stego_path,
+                    cover_path,
+                    candidate_low,
+                    candidate_high,
+                    int(candidate_depth),
+                )
+            except LSBError as error:
+                last_error = error
+
+    if last_error is not None:
+        raise last_error
+    raise LSBError("Decoding failed for the uploaded image")
+
+
+def _save_uploaded_file(uploaded, folder: str, prefix: str) -> str:
+    filename = uploaded.filename or "file"
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower() if ext else ".png"
+    final_name = f"{prefix}_{uuid.uuid4().hex}{ext}"
+    final_path = os.path.join(folder, final_name)
+    uploaded.save(final_path)
+    return final_path
+
+
 def create_app() -> Flask:
     flask_app = Flask(__name__)
     flask_app.config.from_object(Config)
@@ -207,8 +251,12 @@ def create_app() -> Flask:
         paths = _simulation_paths(simulation_id, flask_app.config["RESULTS_FOLDER"])
         capacity = analyze_image_capacity(sim["image_path"], threshold_low, threshold_high, bit_depth)
         payload_limit = _payload_limit_bytes_from_dimensions(sim.get("dimensions") or [], int(payload_percentage))
+        adaptive_limit = max(1, int(capacity["capacity_bytes"]))
+        effective_limit = min(payload_limit, adaptive_limit)
         if len(secret_message.encode("utf-8")) > payload_limit:
             return jsonify({"error": "Secret message exceeds the selected payload percentage"}), 400
+        if len(secret_message.encode("utf-8")) > adaptive_limit:
+            return jsonify({"error": "Secret message exceeds the adaptive image capacity"}), 400
 
         started = time.perf_counter()
         try:
@@ -229,6 +277,8 @@ def create_app() -> Flask:
 
         metrics = compute_metrics(sim["image_path"], paths["stego_image_path"])
         chi_square = round(chi_square_lsb(paths["stego_image_path"]), 6)
+        mse_value = metrics.get("mse")
+        q_index_value = metrics.get("q_index")
         actual_embedded_words = len(secret_message.split()) if secret_message.strip() else 0
 
         updated = update_simulation(
@@ -238,19 +288,24 @@ def create_app() -> Flask:
                 "stego_image_path": paths["stego_image_path"],
                 "difference_image_path": paths["difference_image_path"],
                 "payload_percentage": int(payload_percentage),
-                "payload_target_bytes": payload_limit,
+                "payload_target_bytes": effective_limit,
                 "edge_threshold_low": threshold_low,
                 "edge_threshold_high": threshold_high,
                 "bit_depth": bit_depth,
                 "secret_message": secret_message,
+                "extracted_message": "",
+                "extraction_time_ms": None,
+                "extraction_accuracy": None,
                 "embedded_bytes": embedded_bytes,
                 "adaptive_capacity_bytes": capacity["capacity_bytes"],
                 "capacity_bytes": max_capacity_bytes,
                 "edge_pixel_count": capacity["edge_pixel_count"],
-                "max_possible_word_count": payload_limit,
+                "max_possible_word_count": effective_limit,
                 "actual_embedded_word_count": actual_embedded_words,
                 "psnr": metrics["psnr"],
                 "ssim": metrics["ssim"],
+                "q_index": q_index_value,
+                "mse": mse_value,
                 "chi_square": chi_square,
                 "embedded_words": actual_embedded_words,
                 "embedding_time_ms": round(elapsed_ms, 4),
@@ -306,6 +361,55 @@ def create_app() -> Flask:
                 "restored_image_path": sim["image_path"],
             }
         )
+
+    @flask_app.post("/api/decode-uploaded-image")
+    def decode_uploaded_image():
+        stego_upload = request.files.get("stego_image")
+        cover_upload = request.files.get("cover_image")
+        threshold_low, threshold_high, bit_depth = _prepare_thresholds(request.form.to_dict())
+
+        if not stego_upload:
+            return jsonify({"error": "Upload a stego image to decode"}), 400
+
+        stego_path = _save_uploaded_file(stego_upload, flask_app.config["UPLOAD_FOLDER"], "uploaded_stego")
+        cover_path = None
+        try:
+            validate_image(stego_path)
+        except LSBError:
+            if os.path.exists(stego_path):
+                os.remove(stego_path)
+            return jsonify({"error": "Invalid stego image"}), 400
+
+        if cover_upload and cover_upload.filename:
+            cover_path = _save_uploaded_file(cover_upload, flask_app.config["UPLOAD_FOLDER"], "uploaded_cover")
+            try:
+                validate_image(cover_path)
+            except LSBError:
+                if os.path.exists(cover_path):
+                    os.remove(cover_path)
+                if os.path.exists(stego_path):
+                    os.remove(stego_path)
+                return jsonify({"error": "Invalid cover reference image"}), 400
+
+        try:
+            extracted_message = _decode_stego_best_effort(stego_path, cover_path, threshold_low, threshold_high, bit_depth)
+        except LSBError:
+            extracted_message = None
+
+        if not extracted_message:
+            if cover_path and os.path.exists(cover_path):
+                os.remove(cover_path)
+            if os.path.exists(stego_path):
+                os.remove(stego_path)
+            return jsonify({"error": "Decoding failed for the uploaded image"}), 400
+
+        response = {
+            "message": "Uploaded image decoded",
+            "extracted_message": extracted_message,
+            "restored_image_path": cover_path,
+            "source_image_path": stego_path,
+        }
+        return jsonify(response)
 
     @flask_app.post("/api/matrix-analysis")
     def matrix_analysis():

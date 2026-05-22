@@ -20,13 +20,16 @@
         <div class="card-header">Input Panel</div>
         <div class="card-body">
           <div class="mb-3">
-            <label class="form-label">Upload Cover Image (PNG/BMP)</label>
+            <div class="small text-uppercase text-muted fw-semibold">Step 1</div>
+            <label class="form-label">Select Image</label>
             <input id="cover-image" type="file" class="form-control" accept=".png,.bmp,image/png,image/bmp">
             <div class="form-text">Supported square resolutions: {{ supported_resolutions|join(", ") }} px</div>
-            <button id="upload-btn" class="btn btn-secondary btn-sm mt-2">Upload Image</button>
           </div>
 
           <div class="row g-2 mb-3">
+            <div class="col-12 mb-1">
+              <div class="small text-uppercase text-muted fw-semibold">Step 2</div>
+            </div>
             <div class="col-6">
               <label class="form-label">Edge Threshold Low</label>
               <input id="edge-threshold-low" type="range" class="form-range" min="0" max="100" value="30">
@@ -39,7 +42,21 @@
             </div>
           </div>
 
+          <div class="mb-3">
+            <div class="small text-uppercase text-muted fw-semibold">Step 3</div>
+            <button id="upload-btn" class="btn btn-secondary btn-sm mt-1">Upload Image</button>
+          </div>
+
+          <div class="mb-3">
+            <div class="small text-uppercase text-muted fw-semibold">Step 4</div>
+            <button id="preprocess-btn" class="btn btn-outline-primary w-100">Preprocess</button>
+            <div class="form-text mt-1">Preprocessing applies Canny edge detection and prepares the adaptive capacity map.</div>
+          </div>
+
           <div class="row g-2 mb-3">
+            <div class="col-12 mb-1">
+              <div class="small text-uppercase text-muted fw-semibold">Step 5</div>
+            </div>
             <div class="col-6">
               <label class="form-label">Payload Capacity</label>
               <select id="payload-size" class="form-select">
@@ -62,7 +79,7 @@
             <label class="form-label">Secret Message</label>
             <textarea id="secret-message" class="form-control" rows="6" placeholder="Enter uncompressed text"></textarea>
             <div id="secret-message-counter" class="form-text text-end">0/0</div>
-            <div id="capacity-summary" class="small text-muted mt-1">Bit limit: 0 | Word limit: 0</div>
+            <div id="capacity-summary" class="small text-muted mt-1">Adaptive capacity: pending preprocess | Approx character limit: -</div>
           </div>
 
           <div class="mb-3">
@@ -71,7 +88,7 @@
           </div>
 
           <div class="d-grid gap-2">
-            <button id="preprocess-btn" class="btn btn-outline-primary">Preprocess</button>
+            <div class="small text-uppercase text-muted fw-semibold">Step 6</div>
             <button id="run-btn" class="btn btn-primary">Run Simulation</button>
           </div>
 
@@ -89,23 +106,45 @@
               <figcaption>Original Image</figcaption>
               <img id="original-image-preview" class="img-fluid border rounded d-none" alt="Original cover image preview">
               <div id="original-image-empty" class="text-muted small">Upload a cover image.</div>
+              <button id="download-original-btn" class="btn btn-outline-secondary btn-sm mt-2">Download Original</button>
             </figure>
+
             <figure class="visual-frame">
               <figcaption>Edge Map</figcaption>
               <img id="edge-image-preview" class="img-fluid border rounded d-none" alt="Generated edge map preview">
               <div id="edge-image-empty" class="text-muted small">Preprocessing creates the edge map.</div>
+              <button id="download-edge-btn" class="btn btn-outline-secondary btn-sm mt-2">Download Edge Map</button>
             </figure>
+
             <figure class="visual-frame">
               <figcaption>Stego Image</figcaption>
               <img id="stego-image-preview" class="img-fluid border rounded d-none" alt="Stego image preview">
               <div id="stego-image-empty" class="text-muted small">Run the simulation to generate the stego image.</div>
-              <button id="decode-btn" class="btn btn-outline-success btn-sm mt-2">Decode</button>
+              <div class="d-flex gap-2 mt-2">
+                <button id="decode-btn" class="btn btn-outline-success btn-sm">Decode</button>
+                <button id="download-stego-btn" class="btn btn-outline-secondary btn-sm">Download Stego</button>
+              </div>
             </figure>
-            <figure class="visual-frame visual-frame-wide">
+
+            <figure class="visual-frame">
+              <figcaption>Stego Image Binary</figcaption>
+              <img id="stego-binary-image-preview" class="img-fluid border rounded d-none" alt="Stego binary preview">
+              <div id="stego-binary-image-empty" class="text-muted small">Generate a binary image from the stego image (pixel threshold).</div>
+              <div class="d-flex gap-2 mt-2">
+                <button id="generate-stego-binary-btn" class="btn btn-outline-secondary btn-sm">Generate Binary</button>
+                <button id="download-stego-binary-btn" class="btn btn-outline-secondary btn-sm">Download Stego Binary</button>
+              </div>
+            </figure>
+
+            <figure class="visual-frame" style="grid-column: 1 / -1;">
               <figcaption>Difference Image</figcaption>
               <img id="difference-image-preview" class="img-fluid border rounded d-none" alt="Difference image preview">
               <div id="difference-image-empty" class="text-muted small">Difference image appears after embedding.</div>
+              <button id="download-difference-btn" class="btn btn-outline-secondary btn-sm mt-2">Download Difference</button>
             </figure>
+          </div>
+          <div class="mt-3 d-flex flex-wrap gap-2">
+            <button id="download-collage-btn" class="btn btn-dark btn-sm">Download 5-Image Collage</button>
           </div>
         </div>
       </div>
@@ -118,13 +157,22 @@
         <div class="card-header">Run Metrics</div>
         <div class="card-body table-responsive">
           <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Value</th>
+                <th>Explanation and Interpretation of the output</th>
+              </tr>
+            </thead>
             <tbody id="metrics-body">
-              <tr><th>Total Available Edge Pixels</th><td id="metric-edge-pixels">-</td></tr>
-              <tr><th>Maximum Possible Word Count</th><td id="metric-max-words">-</td></tr>
-              <tr><th>Actual Embedded Word Count</th><td id="metric-embedded-words">-</td></tr>
-              <tr><th>PSNR (dB)</th><td id="metric-psnr">-</td></tr>
-              <tr><th>SSIM</th><td id="metric-ssim">-</td></tr>
-              <tr><th>Chi-Square</th><td id="metric-chi-square">-</td></tr>
+              <tr><th>Total Available Edge Pixels</th><td id="metric-edge-pixels">-</td><td class="text-muted">Count of pixels flagged as edge/texture used for adaptive embedding.</td></tr>
+              <tr><th>Maximum Possible Word Count</th><td id="metric-max-words">-</td><td class="text-muted">Estimated words that can be embedded given selected payload and capacity.</td></tr>
+              <tr><th>Actual Embedded Word Count</th><td id="metric-embedded-words">-</td><td class="text-muted">Number of words actually embedded from the provided secret message.</td></tr>
+              <tr><th>PSNR (dB)</th><td id="metric-psnr">-</td><td id="explain-psnr" class="text-muted">-</td></tr>
+              <tr><th>SSIM</th><td id="metric-ssim">-</td><td id="explain-ssim" class="text-muted">-</td></tr>
+              <tr><th>Q Index</th><td id="metric-qindex">-</td><td id="explain-qindex" class="text-muted">-</td></tr>
+              <tr><th>MSE</th><td id="metric-mse">-</td><td id="explain-mse" class="text-muted">-</td></tr>
+              <tr><th>Chi-Square</th><td id="metric-chi-square">-</td><td id="explain-chi-square" class="text-muted">-</td></tr>
             </tbody>
           </table>
         </div>
@@ -137,12 +185,36 @@
       <div class="card panel-card">
         <div class="card-header">Decoded Output</div>
         <div class="card-body">
-          <div class="row g-3">
-            <div class="col-lg-6">
+          <div class="mb-3">
+            <label class="form-label">Decode Source</label>
+            <select id="decode-source" class="form-select">
+              <option value="current">1. Current simulated stego</option>
+              <option value="upload">2. Upload image</option>
+            </select>
+          </div>
+
+          <div id="decode-upload-panel" class="mt-3 d-none">
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <label class="form-label">Upload Stego Image</label>
+                <input id="decode-stego-file" type="file" class="form-control" accept=".png,.bmp,image/png,image/bmp">
+              </div>
+              <div class="col-lg-6">
+                <label class="form-label">Upload Original Cover Reference <span class="text-muted">(optional, recommended)</span></label>
+                <input id="decode-cover-file" type="file" class="form-control" accept=".png,.bmp,image/png,image/bmp">
+              </div>
+            </div>
+            <div class="mt-3">
+              <button id="decode-upload-btn" class="btn btn-outline-success">Decode Uploaded Image</button>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-1">
+            <div class="col-12">
               <label class="form-label">Recovered Message</label>
               <textarea id="decoded-message" class="form-control" rows="6" readonly placeholder="Decode the stego image to reveal the hidden message."></textarea>
             </div>
-            <div class="col-lg-6">
+            <div class="col-12">
               <label class="form-label">Restored Original Image</label>
               <div class="border rounded p-2 bg-white">
                 <img id="restored-image-preview" class="img-fluid border rounded d-none" alt="Restored original image preview">

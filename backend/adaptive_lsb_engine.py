@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from typing import Iterable
 
 import numpy as np
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 from backend.lsb_engine import LSBError, validate_image
 from config import Config
@@ -139,6 +141,15 @@ def _iter_embedding_positions(complexity_map: np.ndarray, allocation_map: np.nda
             yield y, x, channel, plane
 
 
+def _serialize_embedding_positions(positions: list[tuple[int, int, int, int]]) -> str:
+    return json.dumps(positions, separators=(",", ":"))
+
+
+def _deserialize_embedding_positions(raw_value: str) -> list[tuple[int, int, int, int]]:
+    data = json.loads(raw_value)
+    return [tuple(int(value) for value in item) for item in data]
+
+
 def analyze_image_capacity(
     input_path: str,
     lower_threshold: float | int | None = 0.3,
@@ -192,28 +203,29 @@ def encode_message_in_image(
     allocation_map = build_bit_allocation_map(image_array, lower_threshold, upper_threshold, bit_depth)
     capacity_bits = int(np.sum(allocation_map, dtype=np.int64))
     max_capacity_bytes = max((capacity_bits - HEADER_BITS) // 8, 0)
+    ordered_positions = list(_iter_embedding_positions(complexity_map, allocation_map))
 
     payload = message.encode("utf-8")
     if len(payload) > max_capacity_bytes:
         raise LSBError("Payload exceeds adaptive capacity")
 
     bits = _to_bits(len(payload).to_bytes(HEADER_BYTES, byteorder="big") + payload)
-    if len(bits) > capacity_bits:
+    if len(bits) > len(ordered_positions):
         raise LSBError("Payload exceeds adaptive capacity")
 
     stego = image_array.copy()
-    bit_index = 0
-    for y, x, channel, plane in _iter_embedding_positions(complexity_map, allocation_map):
-        if bit_index >= len(bits):
-            break
+    for bit_index, (y, x, channel, plane) in enumerate(ordered_positions[: len(bits)]):
         mask = 1 << plane
         stego[y, x, channel] = (stego[y, x, channel] & (~mask & 0xFF)) | (int(bits[bit_index]) << plane)
-        bit_index += 1
 
-    if bit_index != len(bits):
-        raise LSBError("Adaptive embedding did not complete")
-
-    Image.fromarray(stego, mode="RGB").save(output_path)
+    image = Image.fromarray(stego, mode="RGB")
+    if output_path.lower().endswith(".png"):
+        metadata = PngInfo()
+        metadata.add_text("xect_embedding_positions", _serialize_embedding_positions(ordered_positions), zip=True)
+        metadata.add_text("xect_embedding_version", "1", zip=True)
+        image.save(output_path, pnginfo=metadata)
+    else:
+        image.save(output_path)
     return len(payload), max_capacity_bytes
 
 
@@ -246,10 +258,19 @@ def decode_message_from_image(
     bit_depth: int = 4,
 ) -> str:
     stego_array = _load_rgb(stego_path)
-    reference_array = _load_rgb(cover_path) if cover_path else stego_array
-    complexity_map = calculate_complexity_map(reference_array)
-    allocation_map = build_bit_allocation_map(reference_array, lower_threshold, upper_threshold, bit_depth)
-    ordered_positions = _iter_embedding_positions(complexity_map, allocation_map)
+    if cover_path:
+        reference_array = _load_rgb(cover_path)
+        complexity_map = calculate_complexity_map(reference_array)
+        allocation_map = build_bit_allocation_map(reference_array, lower_threshold, upper_threshold, bit_depth)
+        ordered_positions = _iter_embedding_positions(complexity_map, allocation_map)
+        max_capacity_bytes = max((int(np.sum(allocation_map, dtype=np.int64)) - HEADER_BITS) // 8, 0)
+    else:
+        with Image.open(stego_path) as image:
+            embedding_positions_raw = image.info.get("xect_embedding_positions")
+        if not embedding_positions_raw:
+            raise LSBError("Missing embedding metadata for coverless decode")
+        ordered_positions = iter(_deserialize_embedding_positions(embedding_positions_raw))
+        max_capacity_bytes = None
 
     header_bits = []
     for _ in range(HEADER_BITS):
@@ -260,8 +281,7 @@ def decode_message_from_image(
         header_bits.append(str((stego_array[y, x, channel] >> plane) & 1))
 
     payload_length = int("".join(header_bits), 2)
-    max_capacity_bytes = max((int(np.sum(allocation_map, dtype=np.int64)) - HEADER_BITS) // 8, 0)
-    if payload_length < 0 or payload_length > max_capacity_bytes:
+    if max_capacity_bytes is not None and (payload_length < 0 or payload_length > max_capacity_bytes):
         raise LSBError("Invalid adaptive payload length")
 
     payload_bits = []
