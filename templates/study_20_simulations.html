@@ -1,0 +1,459 @@
+{% extends "base.html" %}
+{% block title %}20 Simulations with Results and Discussion{% endblock %}
+
+{% block extra_css %}
+<style>
+  .study-hero {
+    background: linear-gradient(135deg, #1f2937 0%, #2563eb 100%);
+    color: #fff;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  }
+  .study-card {
+    border: 0;
+    border-radius: 1rem;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  }
+  .resolution-badge {
+    background: #e2e8f0;
+    color: #0f172a;
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .message-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+  }
+  .message-grid textarea {
+    min-height: 82px;
+  }
+  .message-counter {
+    font-size: 0.78rem;
+    line-height: 1.2;
+    color: #64748b;
+    text-align: right;
+  }
+  .message-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .message-wrap.counter-warning .message-counter {
+    color: #b45309;
+    font-weight: 600;
+  }
+  .message-wrap.counter-danger .message-counter {
+    color: #b91c1c;
+    font-weight: 700;
+  }
+  .results-table td,
+  .results-table th {
+    vertical-align: middle;
+  }
+  .section-gap {
+    margin-top: 1.5rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0 py-3">
+  <div class="study-hero mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <div class="text-uppercase small opacity-75">Study Page</div>
+        <h1 class="h3 mb-2">20 Simulations with Results and Discussion</h1>
+        <p class="mb-0">Upload 20 benchmark images per resolution, run payload sweeps, compute metrics, extract messages, and generate a discussion summary.</p>
+      </div>
+      <div class="text-end">
+        <div class="small opacity-75">Supported resolutions</div>
+        <div class="fw-semibold">{{ supported_resolutions|join("px, ") }}px</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="study-status" class="alert alert-info">Upload images for a resolution, enter 20 messages, then run a payload simulation.</div>
+
+  {% for res in supported_resolutions %}
+  <div class="card study-card section-gap" data-resolution-card="{{ res }}">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <span>{{ res }}px Batch Study</span>
+      <span class="resolution-badge">20 images at once</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-6">
+          <label class="form-label fw-semibold">Step 1: Upload 20 images for {{ res }}px</label>
+          <input type="file" class="form-control study-image-input" multiple accept=".png,.bmp,image/png,image/bmp" data-resolution="{{ res }}">
+          <div class="form-text">Select up to 20 images with {{ res }} x {{ res }} resolution.</div>
+        </div>
+        <div class="col-lg-6">
+          <label class="form-label fw-semibold">Bit Depth</label>
+          <select class="form-select study-bit-depth" data-resolution="{{ res }}">
+            <option value="1">1 bit/channel</option>
+            <option value="2">2 bits/channel</option>
+            <option value="3" selected>3 bits/channel</option>
+            <option value="4">4 bits/channel</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section-gap">
+        <div class="fw-semibold mb-2">Step 2: Enter 20 messages for {{ res }}px</div>
+        <div class="message-grid" data-messages-grid="{{ res }}">
+          {% for i in range(1, 21) %}
+          <div class="message-wrap" data-message-wrap="{{ res }}-{{ i }}">
+            <textarea class="form-control study-message" data-resolution="{{ res }}" data-index="{{ i }}" placeholder="Embed message for image {{ i }}"></textarea>
+            <div class="message-counter" data-message-counter="{{ res }}-{{ i }}">0 bytes</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="section-gap">
+        <div class="fw-semibold mb-2">Step 3: Payload capacities</div>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          {% for option in payload_options %}
+          <button class="btn btn-outline-primary study-run-btn" data-resolution="{{ res }}" data-payload="{{ option }}">Run Simulation for {{ option }}% payload</button>
+          {% endfor %}
+        </div>
+        <div class="small text-muted mb-2">Character limit and payload count are computed per uploaded image before encoding.</div>
+        <div class="mb-2">
+          <div class="fw-semibold">Estimated character limits (per uploaded image)</div>
+          <div class="small text-muted">Shown are the theoretical limits derived from image dimensions. Adaptive capacity may be lower.</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-3" data-capacity-display="{{ res }}"></div>
+      </div>
+
+      <div class="section-gap">
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <button class="btn btn-outline-secondary study-metrics-btn" data-resolution="{{ res }}">Compute Metrics</button>
+          <button class="btn btn-outline-success study-extract-btn" data-resolution="{{ res }}">Extract Messages</button>
+          <button class="btn btn-primary ms-auto study-report-btn" data-resolution="{{ res }}">Results and Discussion of the Study</button>
+        </div>
+        <div class="alert alert-light border mb-0">
+          <div class="fw-semibold mb-1">Discussion Summary</div>
+          <div class="study-discussion text-muted" data-discussion-target="{{ res }}">No results yet for this resolution.</div>
+        </div>
+      </div>
+
+      <div class="section-gap table-responsive">
+        <table class="table table-sm align-middle results-table mb-0">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Payload %</th>
+              <th>PSNR</th>
+              <th>MSE</th>
+              <th>SSIM</th>
+              <th>Q Index</th>
+              <th>Extraction Accuracy</th>
+              <th>Embedding Time</th>
+              <th>Extraction Time</th>
+            </tr>
+          </thead>
+          <tbody data-results-body="{{ res }}">
+            <tr><td colspan="9" class="text-muted">No simulations run yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const statusBox = document.getElementById('study-status');
+  const PAYLOAD_OPTIONS = {{ payload_options|tojson }};
+
+  function setStatus(message, kind = 'info') {
+    statusBox.className = `alert alert-${kind}`;
+    statusBox.textContent = message;
+  }
+
+  function collectMessages(resolution) {
+    return Array.from(document.querySelectorAll(`.study-message[data-resolution="${resolution}"]`))
+      .map((textarea) => textarea.value.trim());
+  }
+
+  function getByteLength(text) {
+    return new TextEncoder().encode(text || '').length;
+  }
+
+  function getPayloadLimitBytes(resolution, payloadPercentage) {
+    const totalPixels = Number(resolution) * Number(resolution);
+    if (!totalPixels || !payloadPercentage) return 0;
+    return Math.max(1, Math.floor((totalPixels * Number(payloadPercentage)) / 100 / 8));
+  }
+
+  function updateMessageCounters(resolution) {
+    const inputs = Array.from(document.querySelectorAll(`.study-message[data-resolution="${resolution}"]`));
+    const payloadButtons = Array.from(document.querySelectorAll(`.study-run-btn[data-resolution="${resolution}"]`));
+    const activePayload = payloadButtons.length ? Number(payloadButtons[0].dataset.payload) : 10;
+    const limit = getPayloadLimitBytes(resolution, activePayload);
+
+    inputs.forEach((textarea) => {
+      const index = textarea.dataset.index;
+      const wrap = document.querySelector(`[data-message-wrap="${resolution}-${index}"]`);
+      const counter = document.querySelector(`[data-message-counter="${resolution}-${index}"]`);
+      if (!counter || !wrap) return;
+
+      const used = getByteLength(textarea.value);
+      const remaining = limit - used;
+      counter.textContent = `${used} bytes${limit ? ` / ${limit} bytes limit` : ''}${limit ? ` (${remaining >= 0 ? remaining : 0} bytes left)` : ''}`;
+      wrap.classList.remove('counter-warning', 'counter-danger');
+      if (limit && used >= limit) {
+        wrap.classList.add('counter-danger');
+      } else if (limit && used >= Math.max(1, Math.floor(limit * 0.8))) {
+        wrap.classList.add('counter-warning');
+      }
+    });
+  }
+
+  function renderResults(resolution, report) {
+    const body = document.querySelector(`[data-results-body="${resolution}"]`);
+    const discussion = document.querySelector(`[data-discussion-target="${resolution}"]`);
+    if (discussion) discussion.textContent = report.discussion || 'No discussion available.';
+    if (!body) return;
+    const runs = Array.isArray(report.runs) ? report.runs : [];
+    if (!runs.length) {
+      body.innerHTML = '<tr><td colspan="9" class="text-muted">No valid runs were produced.</td></tr>';
+      return;
+    }
+    body.innerHTML = runs.map((run) => `
+      <tr>
+        <td>${run.image_index}</td>
+        <td>${run.payload_percentage}%</td>
+        <td>${Number(run.psnr).toFixed(6)}</td>
+        <td>${Number(run.mse).toFixed(6)}</td>
+        <td>${Number(run.ssim).toFixed(6)}</td>
+        <td>${Number(run.q_index).toFixed(6)}</td>
+        <td>${Number(run.extraction_accuracy).toFixed(2)}</td>
+        <td>${Number(run.embedding_time_ms).toFixed(4)} ms</td>
+        <td>${Number(run.extraction_time_ms).toFixed(4)} ms</td>
+      </tr>
+    `).join('');
+  }
+
+  function computeCharLimitFromResolution(resolution, payloadPercentage) {
+    // Mirror server-side _payload_limit_bytes_from_dimensions: bits = pixels * payload% /100, bytes = bits//8
+    const totalPixels = Number(resolution) * Number(resolution);
+    if (!totalPixels || payloadPercentage <= 0) return 0;
+    const bitLimit = Math.floor((totalPixels * Number(payloadPercentage)) / 100);
+    const byteLimit = Math.max(1, Math.floor(bitLimit / 8));
+    return byteLimit; // bytes ~ utf-8 characters (approx for simple text)
+  }
+
+  function updateCapacityDisplay(resolution) {
+    const container = document.querySelector(`[data-capacity-display="${resolution}"]`);
+    if (!container) return;
+    container.innerHTML = '';
+    PAYLOAD_OPTIONS.forEach((opt) => {
+      const chars = computeCharLimitFromResolution(resolution, opt);
+      const el = document.createElement('div');
+      el.className = 'border rounded px-2 py-1 bg-light';
+      el.style.minWidth = '160px';
+      el.innerHTML = `<div class="fw-semibold">${opt}% payload</div><div class="small text-muted">~ ${chars} bytes (approx. chars)</div>`;
+      container.appendChild(el);
+    });
+  }
+
+  async function runStudy(resolution, payloadPercentage) {
+    const imagesInput = document.querySelector(`.study-image-input[data-resolution="${resolution}"]`);
+    const bitDepthInput = document.querySelector(`.study-bit-depth[data-resolution="${resolution}"]`);
+    if (!imagesInput || !imagesInput.files.length) {
+      throw new Error(`Upload the images for ${resolution}px first.`);
+    }
+
+    const messages = collectMessages(resolution);
+    const form = new FormData();
+    form.append('resolution', resolution);
+    form.append('payload_percentage', payloadPercentage);
+    form.append('bit_depth', bitDepthInput ? bitDepthInput.value : '3');
+    form.append('edge_threshold_low', '0.30');
+    form.append('edge_threshold_high', '0.70');
+    Array.from(imagesInput.files).forEach((file) => form.append('images', file));
+    messages.forEach((message) => form.append('messages', message));
+
+    const response = await fetch('/api/study-20-simulations', {
+      method: 'POST',
+      body: form,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Study batch failed');
+    }
+    renderResults(resolution, data);
+    setStatus(`Completed ${data.run_count} runs for ${resolution}px at ${payloadPercentage}% payload.`, 'success');
+  }
+
+  // Wire run buttons
+  document.querySelectorAll('.study-run-btn').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        await runStudy(Number(button.dataset.resolution), Number(button.dataset.payload));
+      } catch (error) {
+        setStatus(error.message || 'Unable to run batch study', 'danger');
+      }
+    });
+  });
+
+  // Wire metrics / extract to reuse primary payload button
+  document.querySelectorAll('.study-metrics-btn').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        const resolution = Number(button.dataset.resolution);
+        const payloadButton = document.querySelector(`.study-run-btn[data-resolution="${resolution}"]`);
+        if (payloadButton) {
+          await runStudy(resolution, Number(payloadButton.dataset.payload));
+        }
+      } catch (error) {
+        setStatus(error.message || 'Unable to compute metrics', 'danger');
+      }
+    });
+  });
+
+  document.querySelectorAll('.study-extract-btn').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        const resolution = Number(button.dataset.resolution);
+        const payloadButton = document.querySelector(`.study-run-btn[data-resolution="${resolution}"]`);
+        if (payloadButton) {
+          await runStudy(resolution, Number(payloadButton.dataset.payload));
+        }
+      } catch (error) {
+        setStatus(error.message || 'Unable to extract messages', 'danger');
+      }
+    });
+  });
+
+  // Study report modal and rendering
+  function renderStudyReport(report) {
+    const modalBody = document.getElementById('studyReportBody');
+    if (!modalBody) return;
+    modalBody.innerHTML = '';
+
+    // Table 2: Image Resolution / Available Edge Pixels / Embedding Capacity
+    const table2 = document.createElement('div');
+    table2.innerHTML = `
+      <h5>Table 2. Image Resolution vs Edge Pixels & Embedding Capacity</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Image Resolution</th><th>Available Edge Pixels (avg)</th><th>Embedding Capacity (bytes avg)</th></tr></thead>
+        <tbody>
+        ${Object.values(report.by_resolution).map(r => `<tr><td>${r.resolution}px</td><td>${r.avg_edge_pixels}</td><td>${r.avg_capacity_bytes}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+    modalBody.appendChild(table2);
+
+    // Table 2.1: Embedding/Extraction Time and Accuracy
+    const table21 = document.createElement('div');
+    table21.innerHTML = `
+      <h5>Table 2.1 Embedding Time / Extraction Time / Extraction Accuracy</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Resolution</th><th>Embedding Time (ms)</th><th>Extraction Time (ms)</th><th>Extraction Accuracy</th></tr></thead>
+        <tbody>
+        ${Object.values(report.by_resolution).map(r => `<tr><td>${r.resolution}px</td><td>${r.avg_embedding_time_ms}</td><td>${r.avg_extraction_time_ms}</td><td>${(r.avg_extraction_accuracy*100).toFixed(2)}%</td></tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+    modalBody.appendChild(table21);
+
+    // Payload comparison table
+    const payloadTable = document.createElement('div');
+    payloadTable.innerHTML = `
+      <h5>Payload Levels Comparison</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Payload %</th><th>MSE</th><th>PSNR</th><th>SSIM</th><th>Q Index</th></tr></thead>
+        <tbody>
+        ${Object.values(report.by_payload).sort((a,b)=>a.payload_percentage-b.payload_percentage).map(p => `<tr><td>${p.payload_percentage}%</td><td>${p.avg_mse}</td><td>${p.avg_psnr}</td><td>${p.avg_ssim}</td><td>${p.avg_q_index}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+    modalBody.appendChild(payloadTable);
+
+    // Charts: Payload vs PSNR/SSIM/MSE
+    const chartsDiv = document.createElement('div');
+    chartsDiv.innerHTML = `<h5>Figures</h5><canvas id="chartPsnr" height="120"></canvas><canvas id="chartSsim" height="120" class="mt-3"></canvas><canvas id="chartMse" height="120" class="mt-3"></canvas>`;
+    modalBody.appendChild(chartsDiv);
+
+    const labels = Object.values(report.by_payload).map(p=>p.payload_percentage).sort((a,b)=>a-b);
+    const psnrData = labels.map(l => report.by_payload[l].avg_psnr);
+    const ssimData = labels.map(l => report.by_payload[l].avg_ssim);
+    const mseData = labels.map(l => report.by_payload[l].avg_mse);
+
+    const ctxP = document.getElementById('chartPsnr').getContext('2d');
+    new Chart(ctxP, {type:'line', data:{labels, datasets:[{label:'PSNR',data:psnrData,borderColor:'#1f77b4',fill:false}]}, options:{responsive:true}});
+
+    const ctxS = document.getElementById('chartSsim').getContext('2d');
+    new Chart(ctxS, {type:'line', data:{labels, datasets:[{label:'SSIM',data:ssimData,borderColor:'#2ca02c',fill:false}]}, options:{responsive:true}});
+
+    const ctxM = document.getElementById('chartMse').getContext('2d');
+    new Chart(ctxM, {type:'line', data:{labels, datasets:[{label:'MSE',data:mseData,borderColor:'#d62728',fill:false}]}, options:{responsive:true}});
+  }
+
+  document.querySelectorAll('.study-report-btn').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        setStatus('Loading aggregated results...', 'info');
+        const resp = await fetch('/api/study/report');
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Unable to load study report');
+        // show modal
+        const modalEl = new bootstrap.Modal(document.getElementById('studyReportModal'));
+        renderStudyReport(data);
+        modalEl.show();
+        setStatus('Aggregated results loaded', 'success');
+      } catch (err) {
+        setStatus(err.message || 'Failed to load report', 'danger');
+      }
+    });
+  });
+
+  // Update capacity displays when files change or on load
+  document.querySelectorAll('.study-image-input').forEach((input) => {
+    input.addEventListener('change', () => {
+      const res = Number(input.dataset.resolution || input.getAttribute('data-resolution'));
+      updateCapacityDisplay(res);
+      updateMessageCounters(res);
+    });
+    // initialize display for each input
+    const resInit = Number(input.dataset.resolution || input.getAttribute('data-resolution'));
+    updateCapacityDisplay(resInit);
+    updateMessageCounters(resInit);
+  });
+
+  document.querySelectorAll('.study-message').forEach((textarea) => {
+    textarea.addEventListener('input', () => {
+      const res = Number(textarea.dataset.resolution || textarea.getAttribute('data-resolution'));
+      updateMessageCounters(res);
+    });
+  });
+
+})();
+</script>
+<!-- Study Report Modal -->
+<div class="modal fade" id="studyReportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Results and Discussion of the Study</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="studyReportBody">
+        Loading...
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

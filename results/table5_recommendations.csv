@@ -1,0 +1,5 @@
+Resolution,Recommended Payload,PSNR,Extraction Accuracy,Recommendation
+128px,90%,69.8476,100.00%,"Optimal: PSNR >= 40 dB, high fidelity, and reliable extraction."
+256px,90%,68.3422,100.00%,"Optimal: PSNR >= 40 dB, high fidelity, and reliable extraction."
+512px,N/A,N/A,N/A,No runs yet for this resolution.
+1024px,N/A,N/A,N/A,No runs yet for this resolution.

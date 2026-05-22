@@ -174,6 +174,14 @@ def create_app() -> Flask:
             supported_resolutions=Config.SUPPORTED_RESOLUTIONS,
         )
 
+    @flask_app.get("/study/20-simulations")
+    def study_20_simulations():
+        return render_template(
+            "study_20_simulations.html",
+            payload_options=[10, 25, 50, 75, 90],
+            supported_resolutions=Config.SUPPORTED_RESOLUTIONS,
+        )
+
     @flask_app.post("/api/upload-image")
     def upload_image():
         uploaded = request.files.get("image")
@@ -526,6 +534,248 @@ def create_app() -> Flask:
             "summary": summary,
         }
         report_path = os.path.join(flask_app.config["RESULTS_FOLDER"], f"matrix_report_{uuid.uuid4().hex}.json")
+        with open(report_path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2)
+        report["report_path"] = report_path
+        return jsonify(report)
+
+    @flask_app.get('/api/study/report')
+    def study_report_aggregate():
+        # Scan results folder for study20 reports and aggregate metrics
+        results_dir = flask_app.config['RESULTS_FOLDER']
+        reports = []
+        for name in os.listdir(results_dir):
+            if name.startswith('study20_') and name.endswith('.json'):
+                path = os.path.join(results_dir, name)
+                try:
+                    with open(path, 'r', encoding='utf-8') as fh:
+                        try:
+                            data = json.load(fh)
+                        except json.JSONDecodeError:
+                            continue
+                        reports.append(data)
+                except OSError:
+                    continue
+
+        # Aggregate per resolution and per payload
+        per_resolution = {}
+        per_payload = {}
+        all_runs = []
+        for rep in reports:
+            runs = rep.get('runs', [])
+            for run in runs:
+                all_runs.append(run)
+                res = int(run.get('resolution', 0))
+                payload = int(run.get('payload_percentage', 0))
+                per_resolution.setdefault(res, []).append(run)
+                per_payload.setdefault(payload, []).append(run)
+
+        summary_res = {}
+        for res, runs in per_resolution.items():
+            count = len(runs)
+            avg_edge = sum(float(r.get('edge_pixel_count', 0)) for r in runs) / count if count else 0
+            avg_capacity = sum(float(r.get('capacity_bytes', 0)) for r in runs) / count if count else 0
+            avg_embed_time = sum(float(r.get('embedding_time_ms', 0)) for r in runs) / count if count else 0
+            avg_extract_time = sum(float(r.get('extraction_time_ms', 0)) for r in runs) / count if count else 0
+            avg_accuracy = sum(float(r.get('extraction_accuracy', 0)) for r in runs) / count if count else 0
+            summary_res[res] = {
+                'resolution': res,
+                'run_count': count,
+                'avg_edge_pixels': round(avg_edge, 2),
+                'avg_capacity_bytes': round(avg_capacity, 2),
+                'avg_embedding_time_ms': round(avg_embed_time, 4),
+                'avg_extraction_time_ms': round(avg_extract_time, 4),
+                'avg_extraction_accuracy': round(avg_accuracy, 4),
+            }
+
+        summary_payload = {}
+        for payload, runs in per_payload.items():
+            count = len(runs)
+            avg_mse = sum(float(r.get('mse', 0)) for r in runs) / count if count else 0
+            avg_psnr = sum(float(r.get('psnr', 0)) for r in runs) / count if count else 0
+            avg_ssim = sum(float(r.get('ssim', 0)) for r in runs) / count if count else 0
+            avg_q = sum(float(r.get('q_index', 0)) for r in runs) / count if count else 0
+            summary_payload[payload] = {
+                'payload_percentage': payload,
+                'run_count': count,
+                'avg_mse': round(avg_mse, 6),
+                'avg_psnr': round(avg_psnr, 6),
+                'avg_ssim': round(avg_ssim, 6),
+                'avg_q_index': round(avg_q, 6),
+            }
+
+        # Recommendations per resolution: choose highest payload with avg_psnr >=40 and avg_accuracy >=0.98
+        recommendations = {}
+        for res, runs in per_resolution.items():
+            best = None
+            payload_groups = {}
+            for r in runs:
+                p = int(r.get('payload_percentage', 0))
+                payload_groups.setdefault(p, []).append(r)
+            for p, grp in sorted(payload_groups.items()):
+                count = len(grp)
+                avg_psnr = sum(float(x.get('psnr', 0)) for x in grp) / count if count else 0
+                avg_acc = sum(float(x.get('extraction_accuracy', 0)) for x in grp) / count if count else 0
+                if avg_psnr >= 40 and avg_acc >= 0.98:
+                    best = {'recommended_payload': p, 'psnr': round(avg_psnr, 4), 'extraction_accuracy': round(avg_acc, 4)}
+            if not best:
+                # fallback: pick payload with highest extraction accuracy then higher psnr
+                best_choice = (None, -1.0, -1.0)  # (payload, avg_acc, avg_psnr)
+                for p, grp in payload_groups.items():
+                    count = len(grp)
+                    avg_psnr = sum(float(x.get('psnr', 0)) for x in grp) / count if count else 0
+                    avg_acc = sum(float(x.get('extraction_accuracy', 0)) for x in grp) / count if count else 0
+                    if (avg_acc > best_choice[1]) or (avg_acc == best_choice[1] and avg_psnr > best_choice[2]):
+                        best_choice = (int(p), avg_acc, avg_psnr)
+                if best_choice[0] is not None:
+                    best = {'recommended_payload': int(best_choice[0]), 'psnr': round(best_choice[2], 4), 'extraction_accuracy': round(best_choice[1], 4)}
+            recommendations[res] = best
+
+        return jsonify({
+            'by_resolution': summary_res,
+            'by_payload': summary_payload,
+            'recommendations': recommendations,
+            'reports_count': len(reports),
+            'total_runs': len(all_runs),
+        })
+
+    @flask_app.post("/api/study-20-simulations")
+    def study_20_simulations_api():
+        resolution = _coerce_int(request.form.get("resolution"), 128)
+        payload_percentage = _coerce_int(request.form.get("payload_percentage"), 10)
+        bit_depth = _coerce_int(request.form.get("bit_depth"), 3)
+        threshold_low, threshold_high, _ = _prepare_thresholds(request.form.to_dict())
+        uploaded_images = request.files.getlist("images")
+        messages = request.form.getlist("messages")
+
+        if resolution not in Config.SUPPORTED_RESOLUTIONS:
+            return jsonify({"error": f"resolution must be one of {Config.SUPPORTED_RESOLUTIONS}"}), 400
+        if payload_percentage not in Config.PAYLOAD_OPTIONS_PERCENT:
+            return jsonify({"error": f"payload_percentage must be one of {Config.PAYLOAD_OPTIONS_PERCENT}"}), 400
+        if bit_depth not in {1, 2, 3, 4}:
+            return jsonify({"error": "bit_depth must be 1, 2, 3, or 4"}), 400
+        if not uploaded_images:
+            return jsonify({"error": "Upload one or more images"}), 400
+
+        runs: list[dict] = []
+        temp_paths: list[str] = []
+        try:
+            for index, uploaded in enumerate(uploaded_images, start=1):
+                filename = f"study20_{resolution}_{uuid.uuid4().hex}.tmp"
+                save_path = os.path.join(flask_app.config["UPLOAD_FOLDER"], filename)
+                uploaded.save(save_path)
+                temp_paths.append(save_path)
+
+                try:
+                    width, height, _ = validate_image(save_path)
+                except LSBError:
+                    continue
+
+                if width != resolution or height != resolution:
+                    continue
+
+                capacity = analyze_image_capacity(save_path, threshold_low, threshold_high, bit_depth)
+                payload_limit = _payload_limit_bytes_from_dimensions(capacity["dimensions"], payload_percentage)
+                message = messages[index - 1] if index - 1 < len(messages) else ""
+                message_bytes = message.encode("utf-8")
+                if len(message_bytes) > payload_limit:
+                    message = message_bytes[:payload_limit].decode("utf-8", errors="ignore")
+
+                stego_path = os.path.join(flask_app.config["RESULTS_FOLDER"], f"study20_{resolution}_{uuid.uuid4().hex}.png")
+                started = time.perf_counter()
+                try:
+                    embedded_bytes, max_capacity_bytes = encode_message_in_image(
+                        save_path,
+                        message,
+                        stego_path,
+                        threshold_low,
+                        threshold_high,
+                        bit_depth,
+                    )
+                except LSBError:
+                    continue
+                embedding_time_ms = (time.perf_counter() - started) * 1000
+
+                decode_started = time.perf_counter()
+                try:
+                    extracted_message = decode_message_from_image(
+                        stego_path,
+                        save_path,
+                        threshold_low,
+                        threshold_high,
+                        bit_depth,
+                    )
+                except LSBError:
+                    extracted_message = ""
+                extraction_time_ms = (time.perf_counter() - decode_started) * 1000
+
+                metrics = compute_metrics(save_path, stego_path)
+                chi_square = round(chi_square_lsb(stego_path), 6)
+                extraction_accuracy = 1.0 if extracted_message == message else 0.0
+
+                runs.append({
+                    "image_index": index,
+                    "resolution": resolution,
+                    "payload_percentage": payload_percentage,
+                    "bit_depth": bit_depth,
+                    "capacity_bytes": capacity["capacity_bytes"],
+                    "edge_pixel_count": capacity.get("edge_pixel_count", 0),
+                    "payload_limit_bytes": payload_limit,
+                    "embedded_bytes": embedded_bytes,
+                    "max_capacity_bytes": max_capacity_bytes,
+                    "psnr": metrics["psnr"],
+                    "ssim": metrics["ssim"],
+                    "mse": metrics["mse"],
+                    "q_index": metrics["q_index"],
+                    "chi_square": chi_square,
+                    "extraction_accuracy": extraction_accuracy,
+                    "embedding_time_ms": round(embedding_time_ms, 4),
+                    "extraction_time_ms": round(extraction_time_ms, 4),
+                    "message_length": len(message),
+                    "extracted_message": extracted_message,
+                    "stego_path": stego_path,
+                })
+        finally:
+            for path in temp_paths:
+                if os.path.exists(path):
+                    os.remove(path)
+
+        if runs:
+            avg_psnr = round(sum(float(run["psnr"]) for run in runs) / len(runs), 6)
+            avg_ssim = round(sum(float(run["ssim"]) for run in runs) / len(runs), 6)
+            avg_mse = round(sum(float(run["mse"]) for run in runs) / len(runs), 6)
+            avg_q = round(sum(float(run["q_index"]) for run in runs) / len(runs), 6)
+            avg_accuracy = round(sum(float(run["extraction_accuracy"]) for run in runs) / len(runs), 6)
+            avg_embed_time = round(sum(float(run["embedding_time_ms"]) for run in runs) / len(runs), 4)
+            avg_extract_time = round(sum(float(run["extraction_time_ms"]) for run in runs) / len(runs), 4)
+        else:
+            avg_psnr = avg_ssim = avg_mse = avg_q = avg_accuracy = 0.0
+            avg_embed_time = avg_extract_time = 0.0
+
+        discussion = (
+            f"The {resolution}px batch produced {len(runs)} valid simulations at {payload_percentage}% payload. "
+            f"Average PSNR was {avg_psnr} dB, SSIM was {avg_ssim}, MSE was {avg_mse}, Q Index was {avg_q}, and extraction accuracy was {avg_accuracy}. "
+            f"Embedding and extraction times averaged {avg_embed_time} ms and {avg_extract_time} ms respectively."
+        )
+
+        report = {
+            "resolution": resolution,
+            "payload_percentage": payload_percentage,
+            "bit_depth": bit_depth,
+            "run_count": len(runs),
+            "average_metrics": {
+                "psnr": avg_psnr,
+                "ssim": avg_ssim,
+                "mse": avg_mse,
+                "q_index": avg_q,
+                "extraction_accuracy": avg_accuracy,
+                "embedding_time_ms": avg_embed_time,
+                "extraction_time_ms": avg_extract_time,
+            },
+            "discussion": discussion,
+            "runs": runs,
+        }
+        report_path = os.path.join(flask_app.config["RESULTS_FOLDER"], f"study20_{resolution}_{payload_percentage}_{uuid.uuid4().hex}.json")
         with open(report_path, "w", encoding="utf-8") as handle:
             json.dump(report, handle, indent=2)
         report["report_path"] = report_path
